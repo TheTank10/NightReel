@@ -41,25 +41,10 @@ jobs:
           
           WORKSPACE=$(find . -maxdepth 1 -name "*.xcworkspace" -type d | head -n 1 | sed 's|^\./||')
           
-          if [ -z "$WORKSPACE" ]; then
-            echo "❌ No workspace found!"
-            ls -la
-            exit 1
-          fi
-          
           echo "workspace=$WORKSPACE" >> $GITHUB_OUTPUT
+          echo "scheme=NightReel" >> $GITHUB_OUTPUT
           echo "📦 Workspace: $WORKSPACE"
-          
-          SCHEME=$(xcodebuild -list -workspace "$WORKSPACE" 2>&1 | grep -A 100 "Schemes:" | grep -v "Schemes:" | grep -v "^$" | head -n 1 | xargs)
-          
-          if [ -z "$SCHEME" ]; then
-            echo "❌ No scheme found!"
-            xcodebuild -list -workspace "$WORKSPACE"
-            exit 1
-          fi
-          
-          echo "scheme=$SCHEME" >> $GITHUB_OUTPUT
-          echo "🎯 Scheme: $SCHEME"
+          echo "🎯 Scheme: NightReel"
 
       - name: Build .app
         run: |
@@ -90,51 +75,26 @@ jobs:
           
           echo "✅ Build completed"
 
-      - name: 🔍 DEBUG - Show ENTIRE DerivedData structure
-        run: |
-          cd ios
-          echo "=========================================="
-          echo "🔍 FULL DERIVEDDATA TREE:"
-          echo "=========================================="
-          tree -L 5 ./DerivedData 2>/dev/null || find ./DerivedData -type d | head -100
-          echo ""
-          echo "=========================================="
-          echo "🔍 SEARCHING FOR .app FILES:"
-          echo "=========================================="
-          find ./DerivedData -name "*.app" -type d
-          echo ""
-          echo "=========================================="
-          echo "🔍 LISTING Build/Products:"
-          echo "=========================================="
-          ls -laR ./DerivedData/Build/Products/ 2>/dev/null || echo "No Build/Products"
-          echo ""
-          echo "=========================================="
-
       - name: Find and package .app
         run: |
           cd ios
           
-          # Search ANYWHERE for .app
-          echo "Searching for .app files..."
           APP_PATH=$(find ./DerivedData -name "*.app" -type d | head -n 1)
           
           if [ -z "$APP_PATH" ]; then
-            echo "❌ NO .app FOUND ANYWHERE!"
-            echo "Full directory listing:"
-            ls -laR ./DerivedData
+            echo "❌ No .app found!"
+            find ./DerivedData -name "*.app"
             exit 1
           fi
           
           echo "✅ Found .app at: $APP_PATH"
-          echo "Contents:"
-          ls -la "$APP_PATH"
           
           mkdir -p Payload
           cp -r "$APP_PATH" Payload/
           zip -qr NightReel.ipa Payload
           rm -rf Payload
           
-          echo "✅ IPA created: $(ls -lh NightReel.ipa | awk '{print $5}')"
+          echo "✅ IPA: $(ls -lh NightReel.ipa | awk '{print $5}')"
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
