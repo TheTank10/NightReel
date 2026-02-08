@@ -1,4 +1,5 @@
-name: Build iOS IPA
+name: Build iOS IPA (Free Apple ID)
+
 on:
   push:
     branches: [main]
@@ -7,63 +8,68 @@ on:
 jobs:
   build:
     runs-on: macos-latest
-    
+
     steps:
-      - uses: actions/checkout@v3
-      
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
       - name: Setup Node
         uses: actions/setup-node@v3
         with:
           node-version: 18
-      
+
       - name: Install dependencies
         run: npm install
-      
-      - name: Prebuild iOS
+
+      - name: Expo Prebuild
         run: npx expo prebuild --platform ios --clean
-      
-      - name: Install Pods
+
+      - name: Install CocoaPods
         run: |
           cd ios
           pod install
-      
-      - name: Build App (unsigned)
+
+      - name: Install Fastlane
+        run: sudo gem install fastlane
+
+      - name: Sign & Build Signed IPA
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          IOS_BUNDLE_ID: ${{ secrets.IOS_BUNDLE_ID }}
         run: |
           cd ios
-          xcodebuild -workspace *.xcworkspace \
-            -scheme NightReel \
-            -configuration Release \
-            -sdk iphoneos \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            build
-      
-      - name: Find and Package IPA
-        run: |
-          cd ios
-          
-          # Find the .app file in build folder
-          APP_PATH=$(find build -name "*.app" -type d | head -n 1)
-          
-          if [ -z "$APP_PATH" ]; then
-            echo "ERROR: No .app found"
-            exit 1
-          fi
-          
-          echo "Found app at: $APP_PATH"
-          
-          # Create Payload folder
-          mkdir -p Payload
-          cp -r "$APP_PATH" Payload/
-          
-          # Create IPA
-          zip -r NightReel.ipa Payload
-          rm -rf Payload
-          
-          echo "IPA created successfully"
-      
-      - name: Upload IPA
+
+          # 🔧 Create Fastlane lane
+          cat <<EOF > Fastfile
+          default_platform(:ios)
+          platform :ios do
+            lane :ci do
+              # fetch (or create) a dev provisioning profile
+              sigh(
+                username: ENV['APPLE_ID'],
+                app_identifier: ENV['IOS_BUNDLE_ID'],
+                development: true,
+                skip_certificate_verification: true,
+                output_path: "../output"
+              )
+
+              # build the signed ipa
+              build_app(
+                scheme: "NightReel",
+                export_method: "development",
+                output_directory: "../output",
+                output_name: "NightReel.ipa"
+              )
+            end
+          end
+          EOF
+
+          # 🚀 Run the lane
+          fastlane ci
+
+      - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
           name: NightReel-IPA
-          path: ios/NightReel.ipa
+          path: output/NightReel.ipa
