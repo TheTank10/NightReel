@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, TouchableOpacity, Text, StyleSheet, Alert, Platform } from 'react-native';
-import * as FileSystem from 'expo-file-system/legacy';
+//import * as FileSystem from 'expo-file-system/legacy';
 import * as MediaLibrary from 'expo-media-library';
 import { SPACING, COLORS, FONT_SIZES, BORDER_RADIUS } from '../constants';
 
@@ -20,45 +20,45 @@ export const DetailActionButtons: React.FC<DetailActionButtonsProps> = ({
 }) => {
   const [downloading, setDownloading] = React.useState(false);
 
-  const handleDownload = async () => {
-    if (!videoUrl) {
-      Alert.alert('Error', 'No video available to download');
-      return;
-    }
+  //const handleDownload = async () => {
+  //  if (!videoUrl) {
+  //    Alert.alert('Error', 'No video available to download');
+  //    return;
+  //  }
 
     // Note: HLS streams (.m3u8) can't be downloaded directly
-    if (videoUrl.includes('.m3u8')) {
+  //  if (videoUrl.includes('.m3u8')) {
       Alert.alert('Not Supported', 'HLS streams cannot be downloaded. Only MP4 files are supported.');
-      return;
-    }
+  //    return;
+  //  }
 
-    try {
-      setDownloading(true);
+  //  try {
+  //    setDownloading(true);
 
       // Request permissions
-      const { status } = await MediaLibrary.requestPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission Required', 'Please grant media library access to download videos');
-        return;
-      }
+  //    const { status } = await MediaLibrary.requestPermissionsAsync();
+  //    if (status !== 'granted') {
+  //      Alert.alert('Permission Required', 'Please grant media library access to download videos');
+  //      return;
+  //    }
 
       // Create file name
-      const fileName = `${title.replace(/[^a-z0-9]/gi, '_')}_${Date.now()}.mp4`;
-      const fileUri = FileSystem.documentDirectory + fileName;
+  //    const fileName = `${title.replace(/[^a-z0-9]/gi, '_')}_${Date.now()}.mp4`;
+  //    const fileUri = FileSystem.documentDirectory + fileName;
 
       // Download file
-      const { uri } = await FileSystem.downloadAsync(videoUrl, fileUri);
+   //   const { uri } = await FileSystem.downloadAsync(videoUrl, fileUri);
       
       // Save to photo library
-      await MediaLibrary.createAssetAsync(uri);
-      Alert.alert('Success', 'Video downloaded to your photo library');
-    } catch (error) {
-      console.error('Download error:', error);
-      Alert.alert('Download Failed', 'Could not download video');
-    } finally {
-      setDownloading(false);
-    }
-  };
+  //    await MediaLibrary.createAssetAsync(uri);
+  //    Alert.alert('Success', 'Video downloaded to your photo library');
+  //  } catch (error) {
+  //    console.error('Download error:', error);
+  //    Alert.alert('Download Failed', 'Could not download video');
+  //  } finally {
+  //    setDownloading(false);
+  //  }
+  //};
 
   const handleShare = () => {
     // Implement share functionality later
@@ -73,7 +73,7 @@ export const DetailActionButtons: React.FC<DetailActionButtonsProps> = ({
       
       <TouchableOpacity 
         style={[styles.iconButton, downloading && styles.iconButtonDisabled]} 
-        onPress={handleDownload}
+        //onPress={handleDownload}
         disabled={downloading}
       >
         <Text style={styles.iconButtonText}>
