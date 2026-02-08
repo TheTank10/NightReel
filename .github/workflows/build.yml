@@ -108,3 +108,19 @@ jobs:
         with:
           name: build-log
           path: ios/build.log
+
+      - name: Create Release with IPA
+        if: success()
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: latest
+          name: NightReel Latest Build
+          files: ios/NightReel.ipa
+          body: |
+            NightReel IPA - Latest Build
+            
+            **Tap the IPA file below to download on iPhone**
+            
+            Commit: ${{ github.sha }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
