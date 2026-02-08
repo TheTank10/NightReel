@@ -22,51 +22,64 @@ jobs:
       - name: Prebuild iOS
         run: npx expo prebuild --platform ios --clean
       
-      - name: Fix Podfile for nullability warnings
-        run: |
-          cd ios
-          cat >> Podfile << 'EOF'
-          
-          post_install do |installer|
-            installer.pods_project.targets.each do |target|
-              target.build_configurations.each do |config|
-                config.build_settings['WARNING_CFLAGS'] ||= ['$(inherited)', '-Wno-nullability-completeness']
-                config.build_settings['GCC_WARN_INHIBIT_ALL_WARNINGS'] = 'YES'
-              end
-            end
-          end
-          EOF
-      
       - name: Install Pods
         run: |
           cd ios
           pod install
       
-      - name: Build Archive
-        env:
-          NODE_OPTIONS: "--max-old-space-size=4096"
+      - name: Create Xcode env file
         run: |
           cd ios
-          xcodebuild -workspace *.xcworkspace \
+          echo "export NODE_BINARY=$(command -v node)" > .xcode.env.local
+      
+      - name: Build Archive
+        run: |
+          cd ios
+          
+          # Source Node binary path
+          if [ -f .xcode.env.local ]; then
+            source .xcode.env.local
+          elif [ -f .xcode.env ]; then
+            source .xcode.env
+          fi
+          export NODE_BINARY
+          
+          xcodebuild archive \
+            -workspace *.xcworkspace \
             -scheme NightReel \
             -configuration Release \
-            -archivePath build/App.xcarchive \
-            -arch arm64 \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            PROVISIONING_PROFILE="" \
-            archive
+            -archivePath build/App.xcarchive \
+            -allowProvisioningUpdates \
+            CODE_SIGN_STYLE=Automatic \
+            ONLY_ACTIVE_ARCH=NO
       
-      - name: Create IPA
+      - name: Extract and Create IPA
         run: |
           cd ios
+          
+          # Find the .app in archive
+          APP_PATH=$(find build/App.xcarchive/Products/Applications -name "*.app" -maxdepth 1 | head -n 1)
+          
+          if [ -z "$APP_PATH" ]; then
+            echo "ERROR: No .app found in archive"
+            exit 1
+          fi
+          
+          APP_NAME=$(basename "$APP_PATH")
+          echo "Found app: $APP_NAME"
+          
+          # Create Payload directory
           mkdir -p build/Payload
-          cp -r build/App.xcarchive/Products/Applications/*.app build/Payload/
+          cp -r "$APP_PATH" build/Payload/
+          
+          # Create IPA
           cd build
           zip -r NightReel.ipa Payload
+          rm -rf Payload
+          
+          echo "IPA created successfully"
       
       - name: Upload IPA
         uses: actions/upload-artifact@v4
