@@ -1,6 +1,5 @@
 import axios from 'axios';
-import { TMDB_API_KEY } from '@env';
-import { TMDB_BASE_URL, ITEMS_PER_CATEGORY } from '../constants/config';
+import { TMDB_BASE_URL, ITEMS_PER_CATEGORY, TMDB_API_KEY } from '../constants/config';
 import { getEndpoints } from '../constants/endpoints';
 import { Movie, Category, MediaType } from '../types';
 import { ContentDetails, MovieDetails, TVDetails, SeasonDetails } from '../types';
