@@ -32,7 +32,7 @@ jobs:
           cd ios
           echo "export NODE_BINARY=$(command -v node)" > .xcode.env.local
       
-      - name: Build Archive
+      - name: Build Archive (Unsigned for Sideloading)
         run: |
           cd ios
           
@@ -51,8 +51,8 @@ jobs:
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
             -archivePath build/App.xcarchive \
-            -allowProvisioningUpdates \
-            CODE_SIGN_STYLE=Automatic \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
             ONLY_ACTIVE_ARCH=NO
       
       - name: Extract and Create IPA
