@@ -27,55 +27,36 @@ jobs:
           cd ios
           pod install
       
-      - name: Create Xcode env file
+      - name: Build App (unsigned)
         run: |
           cd ios
-          echo "export NODE_BINARY=$(command -v node)" > .xcode.env.local
-      
-      - name: Build Archive (Unsigned for Sideloading)
-        run: |
-          cd ios
-          
-          # Source Node binary path
-          if [ -f .xcode.env.local ]; then
-            source .xcode.env.local
-          elif [ -f .xcode.env ]; then
-            source .xcode.env
-          fi
-          export NODE_BINARY
-          
-          xcodebuild archive \
-            -workspace *.xcworkspace \
+          xcodebuild -workspace *.xcworkspace \
             -scheme NightReel \
             -configuration Release \
             -sdk iphoneos \
-            -destination 'generic/platform=iOS' \
-            -archivePath build/App.xcarchive \
-            CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
-            ONLY_ACTIVE_ARCH=NO
+            CODE_SIGN_IDENTITY="" \
+            build
       
-      - name: Extract and Create IPA
+      - name: Find and Package IPA
         run: |
           cd ios
           
-          # Find the .app in archive
-          APP_PATH=$(find build/App.xcarchive/Products/Applications -name "*.app" -maxdepth 1 | head -n 1)
+          # Find the .app file in build folder
+          APP_PATH=$(find build -name "*.app" -type d | head -n 1)
           
           if [ -z "$APP_PATH" ]; then
-            echo "ERROR: No .app found in archive"
+            echo "ERROR: No .app found"
             exit 1
           fi
           
-          APP_NAME=$(basename "$APP_PATH")
-          echo "Found app: $APP_NAME"
+          echo "Found app at: $APP_PATH"
           
-          # Create Payload directory
-          mkdir -p build/Payload
-          cp -r "$APP_PATH" build/Payload/
+          # Create Payload folder
+          mkdir -p Payload
+          cp -r "$APP_PATH" Payload/
           
           # Create IPA
-          cd build
           zip -r NightReel.ipa Payload
           rm -rf Payload
           
@@ -85,4 +66,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: NightReel-IPA
-          path: ios/build/NightReel.ipa
+          path: ios/NightReel.ipa
