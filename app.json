@@ -33,7 +33,14 @@
     },
     "plugins": [
       "expo-video",
-      "react-native-video"
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "prefersHomeIndicatorAutoHidden": true
+          }
+        }
+      ]
     ],
     "extra": {
       "eas": {
