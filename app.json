@@ -33,7 +33,7 @@
     },
     "plugins": [
       "expo-video",
-      "./plugins/withHomeIndicator"
+      "./modules/home-indicator"
     ],
     "extra": {
       "eas": {
