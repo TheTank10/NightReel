@@ -39,7 +39,7 @@ export const Header: React.FC<Props> = ({
     <View style={styles.container}>
       {/* Logo */}
       <Animated.View style={{ opacity: animations?.logoOpacity, marginBottom: 20 }}>
-        <Text style={styles.logo}>NightReel</Text>
+        <Text style={styles.logo}>Lime TV</Text>
       </Animated.View>
 
       {/* Tabs (hidden when searching) */}

@@ -47,14 +47,9 @@ const findBestHeroItem = (items: any[]): Movie | null => {
  * Returns hero item and categories in parallel for best performance
  */
 export const fetchContent = async (type: MediaType) => {
-  console.log('=== FETCHING PRIORITY CONTENT ===');
-  console.log('Media type:', type);
-
   const config = getEndpoints(type);
 
   try {
-    console.log('>>> Fetching priority items in parallel...');
-
     const [heroResponse, ...categoryResponses] = await Promise.all([
       tmdbClient.get(config.hero),
       ...config.priority.map(async (endpoint, index) => {
@@ -80,10 +75,6 @@ export const fetchContent = async (type: MediaType) => {
       loading: true,  // Mark as loading
     }));
 
-    console.log('✓ Priority content loaded!');
-    console.log('Priority categories:', priorityCategories.length);
-    console.log('Lazy categories:', lazyPlaceholders.length);
-
     return {
       heroItem,
       categories: [...priorityCategories, ...lazyPlaceholders],
@@ -103,8 +94,6 @@ export const fetchContent = async (type: MediaType) => {
  * Fetch lazy-loaded categories
  */
 export const fetchLazyCategories = async (type: MediaType): Promise<Category[]> => {
-  console.log('=== FETCHING LAZY CATEGORIES ===');
-  
   const config = getEndpoints(type);
 
   try {
@@ -123,10 +112,9 @@ export const fetchLazyCategories = async (type: MediaType): Promise<Category[]> 
       loading: false,
     }));
 
-    console.log('✓ Lazy categories loaded!');
     return lazyCategories;
   } catch (error) {
-    console.error('❌ ERROR LOADING LAZY CATEGORIES:', error);
+    console.error('ERROR LOADING LAZY CATEGORIES:', error);
     return [];
   }
 };
@@ -149,15 +137,10 @@ export const searchContent = async (query: string): Promise<Movie[]> => {
       params: { query: encodeURIComponent(query) },
     });
 
-    console.log('✓ Search response status:', response.status);
-    console.log('✓ Total results:', response.data.results?.length);
-
     // Filter to only movies and TV shows
     const filtered = response.data.results.filter(
       (item: any) => item.media_type === 'movie' || item.media_type === 'tv'
     );
-
-    console.log('✓ Filtered results (movies/tv only):', filtered.length);
 
     return filtered;
   } catch (error: unknown) {
@@ -182,15 +165,9 @@ export const fetchContentDetails = async (
   id: number,
   mediaType: 'movie' | 'tv'
 ): Promise<ContentDetails> => {
-  console.log('=== FETCHING CONTENT DETAILS ===');
-  console.log('ID:', id);
-  console.log('Media Type:', mediaType);
-
   const baseUrl = `/${mediaType}/${id}`;
 
   try {
-    console.log('>>> Fetching all detail data in parallel...');
-
     const [detailsRes, creditsRes, videosRes, similarRes, recommendationsRes] = await Promise.all([
       tmdbClient.get(baseUrl),
       tmdbClient.get(`${baseUrl}/credits`),
@@ -198,11 +175,6 @@ export const fetchContentDetails = async (
       tmdbClient.get(`${baseUrl}/similar`),
       tmdbClient.get(`${baseUrl}/recommendations`),
     ]);
-
-    console.log('✓ All detail data loaded!');
-    console.log('  Cast members:', creditsRes.data.cast?.length);
-    console.log('  Videos:', videosRes.data.results?.length);
-    console.log('  Similar items:', similarRes.data.results?.length);
 
     return {
       details: detailsRes.data,
@@ -228,14 +200,8 @@ export const fetchSeasonDetails = async (
   tvId: number,
   seasonNumber: number
 ): Promise<SeasonDetails> => {
-  console.log('=== FETCHING SEASON DETAILS ===');
-  console.log('TV ID:', tvId);
-  console.log('Season:', seasonNumber);
-
   try {
     const response = await tmdbClient.get(`/tv/${tvId}/season/${seasonNumber}`);
-    console.log('✓ Season data loaded!');
-    console.log('  Episodes:', response.data.episodes?.length);
     return response.data;
   } catch (error: unknown) {
     console.error('❌ ERROR LOADING SEASON:');
