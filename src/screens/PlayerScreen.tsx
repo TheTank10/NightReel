@@ -5,16 +5,17 @@ import {
   StatusBar,
   Text,
   TouchableOpacity,
-  ScrollView,
   Platform,
   Pressable,
+  ScrollView,
 } from "react-native";
-import { Video, ResizeMode, Audio, InterruptionModeIOS, InterruptionModeAndroid } from "expo-av";
+import { useVideoPlayer, VideoView } from "expo-video";
+import { useEvent } from "expo";
+import Slider from "@react-native-community/slider";
 import * as ScreenOrientation from "expo-screen-orientation";
 import * as NavigationBar from "expo-navigation-bar";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RouteProp } from "@react-navigation/native";
-//import PrefersHomeIndicatorAutoHidden from 'react-native-home-indicator';
 
 interface SubtitleOption {
   title: string;
@@ -47,29 +48,46 @@ type Props = {
 export const PlayerScreen: React.FC<Props> = ({ navigation, route }) => {
   const { videoUrl, subtitles = [] } = route.params;
 
-  const videoRef = useRef<Video>(null);
-  const hideControlsTimer = useRef<NodeJS.Timeout | null>(null);
-  const lastUpdateTime = useRef(0); // 🔥 Throttle playback updates
-
+  const [controlsVisible, setControlsVisible] = useState(true);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(true);
+  const [isSeeking, setIsSeeking] = useState(false);
   const [subtitleCues, setSubtitleCues] = useState<SubtitleCue[]>([]);
   const [currentSubtitle, setCurrentSubtitle] = useState("");
   const [selectedSubIndex, setSelectedSubIndex] = useState<number>(-1);
   const [showSubMenu, setShowSubMenu] = useState(false);
-  const [controlsVisible, setControlsVisible] = useState(true);
+
+  const hideControlsTimer = useRef<NodeJS.Timeout | null>(null);
+
+  const player = useVideoPlayer(videoUrl, (player) => {
+    player.loop = false;
+    player.timeUpdateEventInterval = 0.1; // Fire every 0.1 seconds
+    player.play();
+  });
+
+  const timeUpdate = useEvent(player, "timeUpdate");
+  const { isPlaying: playerIsPlaying } = useEvent(player, 'playingChange', { 
+    isPlaying: player.playing 
+  });
 
   useEffect(() => {
-    (async () => {
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-        interruptionModeIOS: InterruptionModeIOS.MixWithOthers,
-        interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
-        playsInSilentModeIOS: true,
-        shouldDuckAndroid: false,
-        staysActiveInBackground: false,
-        playThroughEarpieceAndroid: false,
-      });
-    })();
-  }, []);
+    if (timeUpdate?.currentTime !== undefined && !isSeeking) {
+      setCurrentTime(timeUpdate.currentTime);
+    }
+  }, [timeUpdate, isSeeking]);
+
+  useEffect(() => {
+  if (timeUpdate?.currentTime !== undefined && !isSeeking) {
+      setCurrentTime(timeUpdate.currentTime);
+    }
+  }, [timeUpdate, isSeeking]);
+
+  useEffect(() => {
+    if (player.duration) {
+      setDuration(player.duration);
+    }
+  }, [player.duration]);
 
   useEffect(() => {
     (async () => {
@@ -80,6 +98,14 @@ export const PlayerScreen: React.FC<Props> = ({ navigation, route }) => {
         await NavigationBar.setBehaviorAsync("overlay-swipe");
       }
     })();
+
+    return () => {
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+      StatusBar.setHidden(false);
+      if (Platform.OS === "android") {
+        NavigationBar.setVisibilityAsync("visible");
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -100,9 +126,8 @@ export const PlayerScreen: React.FC<Props> = ({ navigation, route }) => {
       setSubtitleCues([]);
       setCurrentSubtitle("");
     }
-  }, [selectedSubIndex]);
+  }, [selectedSubIndex, subtitles]);
 
-  // Auto-hide controls after 3 seconds
   useEffect(() => {
     if (controlsVisible) {
       if (hideControlsTimer.current) {
@@ -121,6 +146,13 @@ export const PlayerScreen: React.FC<Props> = ({ navigation, route }) => {
     };
   }, [controlsVisible]);
 
+  useEffect(() => {
+    const activeCue = subtitleCues.find(
+      (cue) => currentTime >= cue.start && currentTime <= cue.end
+    );
+    setCurrentSubtitle(activeCue ? activeCue.text : "");
+  }, [currentTime, subtitleCues]);
+
   const loadSubtitleFile = async (uri: string) => {
     try {
       const response = await fetch(uri);
@@ -134,10 +166,53 @@ export const PlayerScreen: React.FC<Props> = ({ navigation, route }) => {
     }
   };
 
-  const handleExit = () => navigation.goBack();
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
+  };
 
   const handleScreenTap = () => {
-    setControlsVisible(true);
+    setControlsVisible(!controlsVisible);
+  };
+
+  const togglePlayPause = () => {
+    if (isPlaying) {
+      player.pause();
+    } else {
+      player.play();
+    }
+    setIsPlaying(!isPlaying);
+  };
+
+  const skipBackward = () => {
+    const newTime = Math.max(0, currentTime - 10);
+    player.currentTime = newTime;
+    setCurrentTime(newTime);
+  };
+
+  const skipForward = () => {
+    const newTime = Math.min(duration, currentTime + 10);
+    player.currentTime = newTime;
+    setCurrentTime(newTime);
+  };
+
+  const handleSliderStart = () => {
+    setIsSeeking(true);
+  };
+
+  const handleSliderChange = (value: number) => {
+    setCurrentTime(value);
+  };
+
+  const handleSliderComplete = (value: number) => {
+    player.currentTime = value;
+    setCurrentTime(value);
+    setIsSeeking(false);
+  };
+
+  const handleExit = () => {
+    navigation.goBack();
   };
 
   const subtitleOptions = [
@@ -147,74 +222,98 @@ export const PlayerScreen: React.FC<Props> = ({ navigation, route }) => {
 
   return (
     <View style={styles.container}>
-      {/* Video with tap detection */}
-      <Pressable style={styles.videoContainer} onPress={handleScreenTap}>
-        <Video
-          ref={videoRef}
-          source={{ uri: videoUrl }}
-          style={styles.video}
-          useNativeControls
-          resizeMode={ResizeMode.CONTAIN}
-          shouldPlay
-          onPlaybackStatusUpdate={(status) => {
-            if ("positionMillis" in status && status.positionMillis !== undefined) {
-              const currentTime = Date.now();
-              
-              // Only update every 500ms
-              if (currentTime - lastUpdateTime.current < 500) {
-                return;
-              }
-              
-              lastUpdateTime.current = currentTime;
-              
-              const timeSecs = status.positionMillis / 1000;
-              const activeCue = subtitleCues.find(
-                (cue) => timeSecs >= cue.start && timeSecs <= cue.end
-              );
-              setCurrentSubtitle(activeCue ? activeCue.text : "");
-            }
-          }}
-        />
-      </Pressable>
+      <VideoView
+        player={player}
+        style={styles.video}
+        allowsFullscreen
+        allowsPictureInPicture
+        contentFit="contain"
+        nativeControls={false}
+      />
 
-      {/* Exit Button */}
+      {/* Full screen tap area */}
+      <Pressable 
+        style={styles.tapArea} 
+        onPress={handleScreenTap}
+      />
+
+      {/* Top controls */}
       {controlsVisible && (
-        <TouchableOpacity style={styles.exitButton} onPress={handleExit}>
-          <Text style={styles.exitButtonText}>✕</Text>
-        </TouchableOpacity>
+        <>
+          <TouchableOpacity style={styles.exitButton} onPress={handleExit}>
+            <Text style={styles.exitText}>✕</Text>
+          </TouchableOpacity>
+
+          {subtitles.length > 0 && (
+            <TouchableOpacity
+              style={styles.ccButton}
+              onPress={() => setShowSubMenu(!showSubMenu)}
+            >
+              <Text style={styles.ccText}>CC</Text>
+            </TouchableOpacity>
+          )}
+        </>
       )}
 
-      {/* Subtitle Text Overlay */}
+      {/* Center playback controls */}
+      {controlsVisible && (
+        <View style={styles.centerControls}>
+          <TouchableOpacity style={styles.controlButton} onPress={skipBackward}>
+            <Text style={styles.controlButtonText}>‹‹</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity style={styles.playPauseButton} onPress={togglePlayPause}>
+            <Text style={styles.playPauseText}>{isPlaying ? "❚❚" : "▶"}</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity style={styles.controlButton} onPress={skipForward}>
+            <Text style={styles.controlButtonText}>››</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Bottom controls bar */}
+      {controlsVisible && (
+        <View style={styles.controlsBar}>
+          <Text style={styles.timeText}>{formatTime(currentTime)}</Text>
+          
+          <Slider
+            style={styles.slider}
+            value={currentTime}
+            minimumValue={0}
+            maximumValue={duration || 1}
+            minimumTrackTintColor="#fff"
+            maximumTrackTintColor="rgba(255,255,255,0.3)"
+            thumbTintColor="#fff"
+            onSlidingStart={handleSliderStart}
+            onValueChange={handleSliderChange}
+            onSlidingComplete={handleSliderComplete}
+          />
+          
+          <Text style={styles.timeText}>{formatTime(duration)}</Text>
+        </View>
+      )}
+
+      {/* Subtitles */}
       {currentSubtitle !== "" && (
         <View style={styles.subtitleContainer}>
           <Text style={styles.subtitleText}>{currentSubtitle}</Text>
         </View>
       )}
 
-      {/* CC Button */}
-      {controlsVisible && (
-        <TouchableOpacity
-          style={styles.subButton}
-          onPress={() => setShowSubMenu((v) => !v)}
-        >
-          <Text style={styles.subButtonText}>CC</Text>
-        </TouchableOpacity>
-      )}
-
-      {/* CC Menu */}
+      {/* Subtitle menu */}
       {showSubMenu && (
-        <View style={styles.menuContainer}>
+        <View style={styles.menu}>
           <Text style={styles.menuTitle}>Subtitles</Text>
           <ScrollView style={styles.menuScroll}>
             {subtitleOptions.map((item, index) => (
               <TouchableOpacity
-                key={`sub-${index}`}
+                key={index}
                 style={[
                   styles.menuItem,
-                  selectedSubIndex === index - 1 && styles.menuItemSelected,
+                  selectedSubIndex === index - 1 && styles.menuItemActive,
                 ]}
                 onPress={() => {
-                  console.log("Selected subtitle:", index - 1);
                   setSelectedSubIndex(index - 1);
                   setShowSubMenu(false);
                   setControlsVisible(true);
@@ -237,31 +336,37 @@ const parseSubtitles = (content: string): SubtitleCue[] => {
   const cues: SubtitleCue[] = [];
   const lines = content.trim().split("\n");
   let i = 0;
+
   while (i < lines.length) {
     const line = lines[i].trim();
+    
     if (line.includes("-->")) {
       const [startStr, endStr] = line.split("-->").map((s) => s.trim());
       const start = parseVTTTimestamp(startStr);
       const end = parseVTTTimestamp(endStr);
+      
       i++;
       let text = "";
+      
       while (i < lines.length && lines[i].trim() !== "") {
         text += (text ? "\n" : "") + lines[i].trim();
         i++;
       }
+      
       cues.push({ start, end, text });
     }
+    
     i++;
   }
+
   return cues;
 };
 
 const parseVTTTimestamp = (timestamp: string): number => {
   try {
     const parts = timestamp.split(":");
-    let hours = 0,
-      minutes = 0,
-      seconds = 0;
+    let hours = 0, minutes = 0, seconds = 0;
+
     if (parts.length === 3) {
       hours = parseInt(parts[0]) || 0;
       minutes = parseInt(parts[1]) || 0;
@@ -270,6 +375,7 @@ const parseVTTTimestamp = (timestamp: string): number => {
       minutes = parseInt(parts[0]) || 0;
       seconds = parseFloat(parts[1]) || 0;
     }
+
     return hours * 3600 + minutes * 60 + seconds;
   } catch {
     return 0;
@@ -277,69 +383,177 @@ const parseVTTTimestamp = (timestamp: string): number => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#000" },
-  videoContainer: { flex: 1 },
-  video: { flex: 1 },
+  container: {
+    flex: 1,
+    backgroundColor: "#000",
+  },
+  video: {
+    flex: 1,
+  },
 
+  // Tap area
+  tapArea: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 80,
+    zIndex: 1,
+  },
+
+  // Top buttons
   exitButton: {
     position: "absolute",
-    top: 20,
-    left: 20,
+    top: 16,
+    left: 16,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: "rgba(0,0,0,0.6)",
-    padding: 10,
-    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
     zIndex: 10,
   },
-  exitButtonText: { color: "#fff", fontSize: 24 },
+  exitText: {
+    color: "#fff",
+    fontSize: 20,
+  },
+  ccButton: {
+    position: "absolute",
+    top: 16,
+    right: 16,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 4,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    zIndex: 10,
+  },
+  ccText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "600",
+  },
 
+  // Center controls
+  centerControls: {
+    position: "absolute",
+    top: "50%",
+    left: "50%",
+    transform: [{ translateX: -90 }, { translateY: -25 }],
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 20,
+    zIndex: 10,
+  },
+  controlButton: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  controlButtonText: {
+    color: "#fff",
+    fontSize: 24,
+    fontWeight: "600",
+  },
+  playPauseButton: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  playPauseText: {
+    color: "#fff",
+    fontSize: 24,
+  },
+
+  // Bottom controls
+  controlsBar: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    zIndex: 10,
+  },
+  timeText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "500",
+    minWidth: 40,
+  },
+  slider: {
+    flex: 1,
+    marginHorizontal: 12,
+    height: 40,
+  },
+
+  // Subtitles
   subtitleContainer: {
     position: "absolute",
-    bottom: 40,
+    bottom: 70,
     width: "100%",
     alignItems: "center",
+    paddingHorizontal: 20,
+    zIndex: 5,
   },
   subtitleText: {
     color: "#fff",
-    backgroundColor: "rgba(0,0,0,0.8)",
-    fontSize: 18,
-    padding: 8,
-    borderRadius: 6,
+    backgroundColor: "rgba(0,0,0,0.75)",
+    fontSize: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 4,
+    textAlign: "center",
   },
 
-  subButton: {
-    position: "absolute",
-    top: 20,
-    right: 20,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    padding: 10,
-    borderRadius: 6,
-    zIndex: 10,
-  },
-  subButtonText: { color: "#fff", fontSize: 16 },
-
-  menuContainer: {
+  // Menu
+  menu: {
     position: "absolute",
     top: 60,
-    right: 20,
-    backgroundColor: "#222",
-    padding: 12,
-    borderRadius: 8,
-    zIndex: 20,
+    right: 16,
+    backgroundColor: "rgba(28,28,30,0.95)",
+    borderRadius: 12,
     width: 200,
     maxHeight: 300,
+    padding: 12,
+    zIndex: 20,
   },
-  menuTitle: { color: "#fff", marginBottom: 8, fontSize: 16, fontWeight: "bold" },
-  menuScroll: { maxHeight: 220 },
+  menuTitle: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "600",
+    marginBottom: 8,
+  },
+  menuScroll: {
+    maxHeight: 250,
+  },
   menuItem: {
-    padding: 10,
-    borderRadius: 6,
-    marginBottom: 4,
     flexDirection: "row",
     justifyContent: "space-between",
+    alignItems: "center",
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 2,
   },
-  menuItemSelected: {
+  menuItemActive: {
     backgroundColor: "rgba(255,255,255,0.1)",
   },
-  menuItemText: { color: "#fff" },
-  checkmark: { color: "#4CAF50", fontWeight: "bold" },
+  menuItemText: {
+    color: "#fff",
+    fontSize: 14,
+  },
+  checkmark: {
+    color: "#4CAF50",
+    fontSize: 16,
+    fontWeight: "bold",
+  },
 });
