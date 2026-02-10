@@ -16,7 +16,8 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.thetank10.limetv",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIBackgroundModes": ["audio"]
       }
     },
     "android": {

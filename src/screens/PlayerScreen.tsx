@@ -16,6 +16,7 @@ import * as ScreenOrientation from "expo-screen-orientation";
 import * as NavigationBar from "expo-navigation-bar";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RouteProp } from "@react-navigation/native";
+import { Audio } from 'expo-av';
 
 interface SubtitleOption {
   title: string;
@@ -65,6 +66,13 @@ export const PlayerScreen: React.FC<Props> = ({ navigation, route }) => {
     player.timeUpdateEventInterval = 0.1;
     player.play();
   });
+
+  useEffect(() => {
+    Audio.setAudioModeAsync({
+      playsInSilentModeIOS: true,
+      staysActiveInBackground: true,
+    });
+  }, []);
 
   const timeUpdate = useEvent(player, "timeUpdate");
   const { isPlaying: playerIsPlaying } = useEvent(player, 'playingChange', { 
