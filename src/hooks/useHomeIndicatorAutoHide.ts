@@ -1,6 +1,16 @@
 import { useEffect, useRef } from 'react';
 import { Platform } from 'react-native';
-import * as HomeIndicatorController from 'home-indicator-controller';
+
+let HomeIndicatorController: any;
+
+try {
+  HomeIndicatorController = require('home-indicator-controller');
+} catch (error) {
+  console.log('HomeIndicatorController not available (probably using Expo Go)');
+  HomeIndicatorController = {
+    setAutoHidden: () => {}, // does nothing
+  };
+}
 
 export function useHomeIndicatorAutoHide(inactivityDelay: number = 3000) {
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -30,15 +40,13 @@ export function useHomeIndicatorAutoHide(inactivityDelay: number = 3000) {
   };
 
   useEffect(() => {
-    resetTimer();
-    
     return () => {
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
       }
       showIndicator();
     };
-  }, [inactivityDelay]);
+  }, []);
 
   return { resetTimer, showIndicator, hideIndicator };
 }

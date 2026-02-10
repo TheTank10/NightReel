@@ -1,0 +1,10 @@
+{
+  "platforms": ["ios", "android"],
+  "ios": {
+    "modules": ["HomeIndicatorControllerModule"],
+    "reactDelegateHandlers": ["HomeIndicatorReactDelegateHandler"]
+  },
+  "android": {
+    "modules": ["expo.modules.homeindicatorcontroller.HomeIndicatorControllerModule"]
+  }
+}
