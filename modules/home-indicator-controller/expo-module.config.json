@@ -1,7 +1,8 @@
 {
-  "platforms": ["apple", "android", "web"],
-  "apple": {
-    "modules": ["HomeIndicatorControllerModule"]
+  "platforms": ["ios", "android"],
+  "ios": {
+    "modules": ["HomeIndicatorControllerModule"],
+    "reactDelegateHandlers": ["HomeIndicatorReactDelegateHandler"]
   },
   "android": {
     "modules": ["expo.modules.homeindicatorcontroller.HomeIndicatorControllerModule"]

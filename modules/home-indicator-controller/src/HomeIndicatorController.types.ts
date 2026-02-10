@@ -1,3 +1,3 @@
-export type HomeIndicatorControllerModule = {
+export interface HomeIndicatorControllerModule {
   setAutoHidden(autoHidden: boolean): void;
-};
+}

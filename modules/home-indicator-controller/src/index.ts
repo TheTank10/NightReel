@@ -1,15 +1,11 @@
 import { requireNativeModule } from 'expo-modules-core';
 
-export interface HomeIndicatorControllerModule {
+interface HomeIndicatorControllerModule {
   setAutoHidden(autoHidden: boolean): void;
 }
 
 const NativeModule = requireNativeModule<HomeIndicatorControllerModule>('HomeIndicatorController');
 
 export function setAutoHidden(autoHidden: boolean): void {
-  return NativeModule.setAutoHidden(autoHidden);
+  NativeModule.setAutoHidden(autoHidden);
 }
-
-export default {
-  setAutoHidden,
-};

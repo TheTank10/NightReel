@@ -1,52 +1,38 @@
-import { useEffect, useRef } from 'react';
-import { Platform } from 'react-native';
+import { useEffect, useRef, useCallback } from 'react';
+import { setAutoHidden } from '../../modules/home-indicator-controller';
 
-let HomeIndicatorController: any;
+export function useHomeIndicatorAutoHide(delay: number = 3000) {
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-try {
-  HomeIndicatorController = require('home-indicator-controller');
-} catch (error) {
-  console.log('HomeIndicatorController not available (probably using Expo Go)');
-  HomeIndicatorController = {
-    setAutoHidden: () => {}, // does nothing
-  };
-}
-
-export function useHomeIndicatorAutoHide(inactivityDelay: number = 3000) {
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  const hideIndicator = () => {
-    if (Platform.OS === 'ios') {
-      HomeIndicatorController.setAutoHidden(true);
+  const resetTimer = useCallback(() => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
     }
-  };
 
-  const showIndicator = () => {
-    if (Platform.OS === 'ios') {
-      HomeIndicatorController.setAutoHidden(false);
-    }
-  };
+    // Show indicator
+    setAutoHidden(false);
 
-  const resetTimer = () => {
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
-    
-    showIndicator();
-    
-    timeoutRef.current = setTimeout(() => {
-      hideIndicator();
-    }, inactivityDelay);
-  };
+    // Hide after delay
+    timerRef.current = setTimeout(() => {
+      setAutoHidden(true);
+    }, delay);
+  }, [delay]);
 
   useEffect(() => {
-    return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
-      showIndicator();
-    };
-  }, []);
+    // Initially show it
+    setAutoHidden(false);
+    
+    // Hide after delay
+    const timer = setTimeout(() => {
+      setAutoHidden(true);
+    }, delay);
 
-  return { resetTimer, showIndicator, hideIndicator };
+    return () => {
+      clearTimeout(timer);
+      // Show indicator when unmounting
+      setAutoHidden(false);
+    };
+  }, [delay]);
+
+  return { resetTimer };
 }
