@@ -159,7 +159,7 @@ const getFebBoxStreamFromAether = async (
       return { success: false, error: 'No HLS stream in Aether response' };
     }
 
-    console.log('[FebBox] ✓ Aether API success');
+    console.log('[FebBox] Aether API success');
 
     return {
       success: true,
@@ -236,8 +236,8 @@ export const getFebBoxStream = async (
         });
 
         // Check for service unavailable errors
-        if ([502, 503, 504].includes(response.status)) {
-          console.log(`[FebBox] FebAPI service down (${response.status}), will fallback to Aether`);
+        if ([500, 502, 503, 504].includes(response.status)) {
+          console.log(`[FebBox] Service error (${response.status}), falling back to Aether`);
           shouldFallbackToAether = true;
           break;
         }
@@ -280,20 +280,19 @@ export const getFebBoxStream = async (
         if (currentIndex !== primaryIndex) {
           await AsyncStorage.setItem(PRIMARY_TOKEN_INDEX_KEY, currentIndex.toString());
           console.log(`[FebBox] Switched primary token to ${currentIndex + 1}`);
-        } else {
-          console.log(`[FebBox] Using primary token ${currentIndex + 1}`);
         }
 
         let best = allStreams.find(s => s.type === 'hls') || allStreams.find(s => s.type === 'mp4') || allStreams[0];
 
+        // Convert HLS URLs to master playlist by removing quality parameter
         if (best.type === 'hls') {
-          const masterUrl = best.url.match(/\/(\d+)\.m3u8/)?.[1];
-          if (masterUrl) {
-            const url = new URL(best.url);
-            url.pathname = `/${masterUrl}/index.m3u8`;
-            best = { ...best, url: url.toString(), quality: 'Master' };
-          }
+          const url = new URL(best.url);
+          url.searchParams.delete('quality');
+          best = { ...best, url: url.toString(), quality: 'Master (Adaptive)' };
+          console.log('[FebBox] Converted to master playlist');
         }
+
+        console.log(`[FebBox] Stream ready: ${best.quality} (${best.type})`);
 
         return {
           success: true,
