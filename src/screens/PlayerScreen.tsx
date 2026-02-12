@@ -75,6 +75,7 @@ export const PlayerScreen: React.FC<Props> = ({ navigation, route }) => {
   const [selectedSubIndex, setSelectedSubIndex] = useState<number>(-1);
   const [showSubMenu, setShowSubMenu] = useState(false);
   const [loadingSubtitle, setLoadingSubtitle] = useState(false);
+  const [subtitleOffset, setSubtitleOffset] = useState(0);
 
   const hideControlsTimer = useRef<NodeJS.Timeout | null>(null);
   const isSeekingRef = useRef(false);
@@ -163,9 +164,9 @@ export const PlayerScreen: React.FC<Props> = ({ navigation, route }) => {
   }, [controlsVisible, isSeeking]);
 
   useEffect(() => {
-    const activeCue = findActiveCue(subtitleCues, currentTime);
+    const activeCue = findActiveCue(subtitleCues, currentTime - subtitleOffset);
     setCurrentSubtitle(activeCue ? activeCue.text : "");
-  }, [currentTime, subtitleCues]);
+  }, [currentTime, subtitleCues, subtitleOffset]);
 
   /**
    * Load subtitle - handles both URI-based and OpenSubtitles fetching
@@ -174,6 +175,7 @@ export const PlayerScreen: React.FC<Props> = ({ navigation, route }) => {
     setSelectedSubIndex(index);
     setShowSubMenu(false);
     setControlsVisible(true);
+    setSubtitleOffset(0);
     
     // If it has a URI, load it directly (legacy support)
     if (subtitle.uri) {
@@ -424,6 +426,7 @@ export const PlayerScreen: React.FC<Props> = ({ navigation, route }) => {
                     setCurrentSubtitle("");
                     setShowSubMenu(false);
                     setControlsVisible(true);
+                    setSubtitleOffset(0);
                   } else {
                     // Language option
                     loadSubtitle(item, index - 1);
@@ -436,6 +439,33 @@ export const PlayerScreen: React.FC<Props> = ({ navigation, route }) => {
                 )}
               </TouchableOpacity>
             ))}
+            
+            {selectedSubIndex !== -1 && (
+              <View style={styles.offsetContainer}>
+                <View style={styles.offsetHeader}>
+                  <Text style={styles.offsetLabel}>Sync</Text>
+                  <Text style={styles.offsetValue}>
+                    {subtitleOffset > 0 ? '+' : ''}{subtitleOffset.toFixed(1)}s
+                  </Text>
+                </View>
+                <Slider
+                  style={styles.offsetSlider}
+                  value={subtitleOffset}
+                  minimumValue={-10}
+                  maximumValue={10}
+                  step={0.1}
+                  minimumTrackTintColor="#4CAF50"
+                  maximumTrackTintColor="rgba(255,255,255,0.2)"
+                  thumbTintColor="transparent"
+                  onValueChange={(value) => setSubtitleOffset(value)}
+                />
+                <View style={styles.offsetMarkers}>
+                  <Text style={styles.offsetMarkerText}>-10s</Text>
+                  <Text style={styles.offsetMarkerText}>0</Text>
+                  <Text style={styles.offsetMarkerText}>+10s</Text>
+                </View>
+              </View>
+            )}
           </ScrollView>
         </View>
       )}
@@ -691,7 +721,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(28,28,30,0.95)",
     borderRadius: 12,
     width: 200,
-    maxHeight: 300,
+    maxHeight: 400,
     padding: 12,
     zIndex: 20,
   },
@@ -702,7 +732,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   menuScroll: {
-    maxHeight: 250,
+    maxHeight: 350,
   },
   menuItem: {
     flexDirection: "row",
@@ -723,5 +753,42 @@ const styles = StyleSheet.create({
     color: "#4CAF50",
     fontSize: 16,
     fontWeight: "bold",
+  },
+  offsetContainer: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.1)",
+  },
+  offsetHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  offsetLabel: {
+    color: "#aaa",
+    fontSize: 13,
+    fontWeight: "500",
+  },
+  offsetValue: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "600",
+    fontVariant: ['tabular-nums'],
+  },
+  offsetSlider: {
+    width: '100%',
+    height: 30,
+  },
+  offsetMarkers: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 4,
+  },
+  offsetMarkerText: {
+    color: "rgba(255,255,255,0.4)",
+    fontSize: 11,
+    fontVariant: ['tabular-nums'],
   },
 });
