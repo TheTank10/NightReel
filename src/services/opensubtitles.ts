@@ -82,10 +82,6 @@ async function searchSubtitles(
   }
 }
 
-/**
- * Convert ASS time format (H:MM:SS.CS) to SRT format (HH:MM:SS,MS)
- * Example: "0:00:12.50" -> "00:00:12,500"
- */
 function convertAssTimeToSrt(assTime: string): string {
   const parts = assTime.split(':');
   if (parts.length !== 3) return '00:00:00,000';

@@ -407,9 +407,47 @@ export const getFebBoxStream = async (
   }
 };
 
-/**
- * Get FebBox stream directly from share key
- */
+// Helper function to extract FID from single file share HTML
+const extractFidFromHtml = async (
+  febboxShareKey: string,
+  headers: HeadersInit
+): Promise<string | null> => {
+  try {
+    const htmlUrl = `https://www.febbox.com/share/${febboxShareKey}`;
+    console.log('[FebBox Direct] Fetching HTML to extract FID:', htmlUrl);
+    
+    const response = await fetch(htmlUrl, { headers });
+    if (!response.ok) {
+      throw new Error(`HTML fetch failed: ${response.status}`);
+    }
+    
+    const html = await response.text();
+    
+    // Look for data-id attributes (file ID is exposed in multiple places)
+    // Prioritize the play_video class or details button
+    const patterns = [
+      /class="[^"]*play_video[^"]*"\s+data-id="(\d+)"/,
+      /class="details"\s+data-id="(\d+)"/,
+      /data-id="(\d+)"/
+    ];
+    
+    for (const pattern of patterns) {
+      const match = html.match(pattern);
+      if (match) {
+        const fid = match[1];
+        console.log('[FebBox Direct] Extracted FID from HTML:', fid);
+        return fid;
+      }
+    }
+    
+    console.log('[FebBox Direct] No FID found in HTML');
+    return null;
+  } catch (error) {
+    console.error('[FebBox Direct] Error extracting FID from HTML:', error);
+    return null;
+  }
+};
+
 export const getFebBoxStreamDirect = async (
   febboxShareKey: string,
   type: 'movie' | 'tv',
@@ -438,6 +476,84 @@ export const getFebBoxStreamDirect = async (
 
     console.log('[FebBox Direct] Starting search:', { shareKey: febboxShareKey, type, season, episode });
 
+    // First, check if this is a single file or folder share
+    const rootResponse = await fetch(
+      `https://www.febbox.com/file/file_share_list?page=1&share_key=${febboxShareKey}&pwd=&parent_id=0&is_html=0`,
+      { headers }
+    );
+
+    if (!rootResponse.ok) {
+      throw new Error(`Root fetch failed: ${rootResponse.status}`);
+    }
+
+    const rootData: FebBoxSearchResponse = await rootResponse.json();
+    const fileList = rootData.data.file_list;
+
+    console.log('[FebBox Direct] Root items found:', fileList.length);
+
+    if (fileList.length === 0) {
+      console.log('[FebBox Direct] Empty file list - this is a single file share');
+      
+      // Extract FID from HTML
+      const fid = await extractFidFromHtml(febboxShareKey, headers);
+      
+      if (!fid) {
+        return { success: false, error: 'Could not extract file ID from single file share' };
+      }
+
+      // Get media URL directly
+      console.log('[FebBox Direct] Fetching media URL for single file, FID:', fid);
+
+      const mediaResponse = await fetch(
+        `https://www.febbox.com/console/video_quality_list?fid=${fid}`,
+        { headers }
+      );
+
+      if (!mediaResponse.ok) {
+        throw new Error(`Media URL fetch failed: ${mediaResponse.status}`);
+      }
+
+      const mediaData: FebBoxMediaResponse = await mediaResponse.json();
+      const qualityHtml = mediaData.html;
+
+      console.log('[FebBox Direct] HTML response length:', qualityHtml.length);
+
+      // Extract HLS URL
+      const hlsMatch = qualityHtml.match(/data-url="(https?:\/\/[^"]*(?:hls|\.m3u8)[^"]*)"/);
+      
+      if (hlsMatch) {
+        let hlsUrl = hlsMatch[1];
+        hlsUrl = hlsUrl.replace(/&quality=[^&]+/, '');
+
+        console.log('[FebBox Direct] HLS master playlist ready (single file)');
+
+        return {
+          success: true,
+          streamUrl: hlsUrl,
+          streamType: 'hls',
+          quality: 'Master (Adaptive)',
+          size: 'Unknown', // Single file shares don't expose size easily
+        };
+      }
+
+      // Fallback: Try ORG link
+      console.log('[FebBox Direct] No HLS found, trying ORG link...');
+      const orgMatch = qualityHtml.match(/data-url="([^"]+)"[^>]*data-quality="ORG"/);
+      
+      if (orgMatch) {
+        console.log('[FebBox Direct] ORG link found (single file)');
+        return {
+          success: true,
+          streamUrl: orgMatch[1],
+          streamType: 'mp4',
+          quality: 'Original',
+          size: 'Unknown',
+        };
+      }
+
+      return { success: false, error: 'No streamable URL available for single file' };
+    }
+
     let targetFile: FebBoxFile | null = null;
 
     if (type === 'tv' && season !== undefined) {
@@ -450,24 +566,23 @@ export const getFebBoxStreamDirect = async (
       for (let page = 1; page <= maxPages; page++) {
         console.log(`[FebBox Direct] Checking page ${page} for season folder`);
         
-        const rootResponse = await fetch(
+        const pageResponse = await fetch(
           `https://www.febbox.com/file/file_share_list?page=${page}&share_key=${febboxShareKey}&pwd=&parent_id=0&is_html=0`,
           { headers }
         );
 
-        if (!rootResponse.ok) {
-          throw new Error(`Root fetch failed: ${rootResponse.status}`);
+        if (!pageResponse.ok) {
+          throw new Error(`Page fetch failed: ${pageResponse.status}`);
         }
 
-        const rootData: FebBoxSearchResponse = await rootResponse.json();
-        const fileList = rootData.data.file_list;
+        const pageData: FebBoxSearchResponse = await pageResponse.json();
+        const pageFileList = pageData.data.file_list;
 
-        console.log(`[FebBox Direct] Page ${page} items found:`, fileList.length);
+        console.log(`[FebBox Direct] Page ${page} items found:`, pageFileList.length);
 
         // Find season folder on this page
-        seasonFolder = fileList.find(item => {
+        seasonFolder = pageFileList.find(item => {
           if (item.is_dir !== 1) return false;
-          // Match "season 1", "season 01", "Season 1", etc.
           const regex = new RegExp(`season\\s*0*${season}\\b`, 'i');
           return regex.test(item.file_name);
         });
@@ -520,21 +635,7 @@ export const getFebBoxStreamDirect = async (
       console.log('[FebBox Direct] Selected file (largest):', targetFile.file_name, targetFile.file_size);
 
     } else {
-      console.log('[FebBox Direct] Handling movie');
-
-      const rootResponse = await fetch(
-        `https://www.febbox.com/file/file_share_list?page=1&share_key=${febboxShareKey}&pwd=&parent_id=0&is_html=0`,
-        { headers }
-      );
-
-      if (!rootResponse.ok) {
-        throw new Error(`Root fetch failed: ${rootResponse.status}`);
-      }
-
-      const rootData: FebBoxSearchResponse = await rootResponse.json();
-      const fileList = rootData.data.file_list;
-
-      console.log('[FebBox Direct] Root items found:', fileList.length);
+      console.log('[FebBox Direct] Handling movie from folder');
 
       const videoFiles = fileList.filter(f => f.is_dir !== 1);
       
@@ -544,7 +645,7 @@ export const getFebBoxStreamDirect = async (
 
       console.log('[FebBox Direct] Video files found:', videoFiles.length);
 
-      // Prefer 2160p/4K (largest file)
+      // Prefer largest file
       targetFile = videoFiles.reduce((largest, current) => 
         current.file_size_bytes > largest.file_size_bytes ? current : largest
       );
@@ -573,13 +674,11 @@ export const getFebBoxStreamDirect = async (
 
     console.log('[FebBox Direct] HTML response length:', qualityHtml.length);
 
-    // Extract HLS URL (more flexible - matches any .m3u8 URL)
+    // Extract HLS URL
     const hlsMatch = qualityHtml.match(/data-url="(https?:\/\/[^"]*(?:hls|\.m3u8)[^"]*)"/);
     
     if (hlsMatch) {
       let hlsUrl = hlsMatch[1];
-      
-      // Remove quality parameter to get master playlist
       hlsUrl = hlsUrl.replace(/&quality=[^&]+/, '');
 
       console.log('[FebBox Direct] HLS master playlist ready');
@@ -593,17 +692,15 @@ export const getFebBoxStreamDirect = async (
       };
     }
 
-    // Fallback: Try to get ORG (original) link
+    // Fallback: Try ORG link
     console.log('[FebBox Direct] No HLS found, trying ORG link...');
     const orgMatch = qualityHtml.match(/data-url="([^"]+)"[^>]*data-quality="ORG"/);
     
     if (orgMatch) {
-      const orgUrl = orgMatch[1];
       console.log('[FebBox Direct] ORG link found');
-
       return {
         success: true,
-        streamUrl: orgUrl,
+        streamUrl: orgMatch[1],
         streamType: 'mp4',
         quality: 'Original',
         size: targetFile.file_size,
