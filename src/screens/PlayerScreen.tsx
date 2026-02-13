@@ -20,11 +20,12 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RouteProp } from "@react-navigation/native";
 import { Audio } from 'expo-av';
 import { getSubtitles } from '../services/opensubtitles';
+import { useSubtitleStyling } from '../hooks';
 
 interface SubtitleOption {
   title: string;
   language: string;
-  uri?: string; // Optional for backward compatibility
+  uri?: string;
 }
 
 interface SubtitleCue {
@@ -44,7 +45,6 @@ type RootStackParamList = {
     title?: string;
     subtitle?: string;
     subtitles?: SubtitleOption[];
-    // New params for OpenSubtitles
     tmdbId?: number;
     mediaType?: 'movie' | 'tv';
     season?: number;
@@ -60,6 +60,14 @@ type Props = {
   route: PlayerRouteProp;
 };
 
+// Helper function to convert hex to rgba
+const hexToRgba = (hex: string, opacity: number) => {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+};
+
 export const PlayerScreen: React.FC<Props> = ({ navigation, route }) => {
   const { 
     videoUrl, 
@@ -69,6 +77,9 @@ export const PlayerScreen: React.FC<Props> = ({ navigation, route }) => {
     season, 
     episode 
   } = route.params;
+
+  // Get user subtitle styling preferences
+  const { styling } = useSubtitleStyling();
 
   const [controlsVisible, setControlsVisible] = useState(true);
   const [currentTime, setCurrentTime] = useState(0);
@@ -81,8 +92,6 @@ export const PlayerScreen: React.FC<Props> = ({ navigation, route }) => {
   const [showSubMenu, setShowSubMenu] = useState(false);
   const [loadingSubtitle, setLoadingSubtitle] = useState(false);
   const [subtitleOffset, setSubtitleOffset] = useState(0);
-  
-  // Track subtitle state per language (for cycling)
   const [subtitleStates, setSubtitleStates] = useState<{ [languageCode: string]: SubtitleState }>({});
 
   const hideControlsTimer = useRef<NodeJS.Timeout | null>(null);
@@ -176,11 +185,7 @@ export const PlayerScreen: React.FC<Props> = ({ navigation, route }) => {
     setCurrentSubtitle(activeCue ? activeCue.text : "");
   }, [currentTime, subtitleCues, subtitleOffset]);
 
-  /**
-   * Load subtitle - handles cycling through multiple subtitle options
-   */
   const loadSubtitle = async (subtitle: SubtitleOption, optionIndex: number) => {
-    // If it has a URI, load it directly (legacy support)
     if (subtitle.uri) {
       setSelectedSubIndex(optionIndex);
       setShowSubMenu(false);
@@ -190,18 +195,14 @@ export const PlayerScreen: React.FC<Props> = ({ navigation, route }) => {
       return;
     }
     
-    // Otherwise, fetch from OpenSubtitles
     if (!tmdbId || !mediaType) {
       console.error('Missing TMDB metadata for subtitle fetching');
       return;
     }
     
     const currentState = subtitleStates[subtitle.language];
-    
-    // Determine which subtitle index to fetch
     let subtitleIndex = 0;
     if (currentState) {
-      // Cycle to next subtitle
       subtitleIndex = (currentState.currentIndex + 1) % currentState.totalAvailable;
     }
     
@@ -217,7 +218,7 @@ export const PlayerScreen: React.FC<Props> = ({ navigation, route }) => {
           mediaType,
           season,
           episode,
-          sortBy: 'popular', // Use popular sorting for best results
+          sortBy: 'popular',
         },
         subtitleIndex
       );
@@ -227,7 +228,6 @@ export const PlayerScreen: React.FC<Props> = ({ navigation, route }) => {
         setSubtitleCues(cues);
         setSelectedSubIndex(optionIndex);
         
-        // Update subtitle state for this language
         setSubtitleStates(prev => ({
           ...prev,
           [subtitle.language]: {
@@ -254,8 +254,6 @@ export const PlayerScreen: React.FC<Props> = ({ navigation, route }) => {
   const loadSubtitleFile = async (uri: string) => {
     try {
       const response = await fetch(uri);
-      
-      // Check if it's gzipped
       const contentType = response.headers.get('content-type') || '';
       const isGzipped = uri.endsWith('.gz') || contentType.includes('gzip');
       
@@ -358,6 +356,26 @@ export const PlayerScreen: React.FC<Props> = ({ navigation, route }) => {
     ...subtitles,
   ];
 
+  // Generate dynamic subtitle style from user preferences
+  const getSubtitleTextStyle = () => {
+    const bgColor = hexToRgba(styling.backgroundColor, styling.backgroundOpacity);
+    return {
+      color: styling.textColor,
+      backgroundColor: bgColor,
+      fontSize: styling.fontSize,
+      fontWeight: styling.fontWeight,
+      paddingHorizontal: styling.paddingHorizontal,
+      paddingVertical: styling.paddingVertical,
+      borderRadius: styling.borderRadius,
+      textAlign: 'center' as const,
+      ...(styling.textShadow && {
+        textShadowColor: 'rgba(0,0,0,0.95)',
+        textShadowOffset: { width: 2, height: 2 },
+        textShadowRadius: 4,
+      }),
+    };
+  };
+
   return (
     <View style={styles.container}>
       <VideoView
@@ -436,8 +454,8 @@ export const PlayerScreen: React.FC<Props> = ({ navigation, route }) => {
       )}
 
       {currentSubtitle !== "" && (
-        <View style={styles.subtitleContainer}>
-          <Text style={styles.subtitleText}>{currentSubtitle}</Text>
+        <View style={[styles.subtitleContainer, { bottom: styling.bottomOffset }]}>
+          <Text style={getSubtitleTextStyle()}>{currentSubtitle}</Text>
         </View>
       )}
 
@@ -453,11 +471,10 @@ export const PlayerScreen: React.FC<Props> = ({ navigation, route }) => {
           <Text style={styles.menuTitle}>Subtitles</Text>
           <ScrollView style={styles.menuScroll}>
             {subtitleOptions.map((item, index) => {
-              const optionIndex = index - 1; // Adjust for "Off" option
+              const optionIndex = index - 1;
               const isSelected = selectedSubIndex === optionIndex;
               const state = subtitleStates[item.language];
               
-              // Build display title with subtitle count
               let displayTitle = item.title;
               if (isSelected && state && state.totalAvailable > 1) {
                 displayTitle = `${item.title} (${state.currentIndex + 1}/${state.totalAvailable})`;
@@ -472,10 +489,8 @@ export const PlayerScreen: React.FC<Props> = ({ navigation, route }) => {
                   ]}
                   onPress={() => {
                     if (index === 0) {
-                      // "Off" option
                       handleSubtitleOffClick();
                     } else {
-                      // Language option - cycle through subtitles
                       loadSubtitle(item, optionIndex);
                     }
                   }}
@@ -729,20 +744,10 @@ const styles = StyleSheet.create({
   },
   subtitleContainer: {
     position: "absolute",
-    bottom: 30,
     width: "100%",
     alignItems: "center",
     paddingHorizontal: 20,
     zIndex: 5,
-  },
-  subtitleText: {
-    color: "#fff",
-    backgroundColor: "rgba(0,0,0,0.75)",
-    fontSize: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 4,
-    textAlign: "center",
   },
   loadingSubtitleOverlay: {
     position: "absolute",

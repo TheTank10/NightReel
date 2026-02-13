@@ -434,45 +434,54 @@ export const getFebBoxStreamDirect = async (
 
     const token = tokens[0];
     const shareUrl = `https://www.febbox.com/share/${febboxShareKey}`;
-    const headers = await getFebBoxHeaders(token, shareUrl); // Now async
+    const headers = await getFebBoxHeaders(token, shareUrl);
 
     console.log('[FebBox Direct] Starting search:', { shareKey: febboxShareKey, type, season, episode });
 
-    // Step 1: Fetch root level
-    const rootResponse = await fetch(
-      `https://www.febbox.com/file/file_share_list?share_key=${febboxShareKey}&pwd=&parent_id=0&is_html=0`,
-      { headers }
-    );
-
-    if (!rootResponse.ok) {
-      throw new Error(`Root fetch failed: ${rootResponse.status}`);
-    }
-
-    const rootData: FebBoxSearchResponse = await rootResponse.json();
-    let fileList = rootData.data.file_list;
-
-    console.log('[FebBox Direct] Root items found:', fileList.length);
-
     let targetFile: FebBoxFile | null = null;
 
-    // Step 2: Handle TV shows - find season folder
     if (type === 'tv' && season !== undefined) {
       console.log('[FebBox Direct] Searching for season', season);
       
-      // Find season folder
-      const seasonFolder = fileList.find(item => {
-        if (item.is_dir !== 1) return false;
-        // Match "season 1", "season 01", "Season 1", etc.
-        const regex = new RegExp(`season\\s*0*${season}\\b`, 'i');
-        return regex.test(item.file_name);
-      });
+      let seasonFolder = null;
+      const maxPages = 3;
 
-      if (!seasonFolder) {
-        console.log('[FebBox Direct] Season folder not found');
-        return { success: false, error: `Season ${season} folder not found` };
+      // Search through pages 1-3 for the season folder
+      for (let page = 1; page <= maxPages; page++) {
+        console.log(`[FebBox Direct] Checking page ${page} for season folder`);
+        
+        const rootResponse = await fetch(
+          `https://www.febbox.com/file/file_share_list?page=${page}&share_key=${febboxShareKey}&pwd=&parent_id=0&is_html=0`,
+          { headers }
+        );
+
+        if (!rootResponse.ok) {
+          throw new Error(`Root fetch failed: ${rootResponse.status}`);
+        }
+
+        const rootData: FebBoxSearchResponse = await rootResponse.json();
+        const fileList = rootData.data.file_list;
+
+        console.log(`[FebBox Direct] Page ${page} items found:`, fileList.length);
+
+        // Find season folder on this page
+        seasonFolder = fileList.find(item => {
+          if (item.is_dir !== 1) return false;
+          // Match "season 1", "season 01", "Season 1", etc.
+          const regex = new RegExp(`season\\s*0*${season}\\b`, 'i');
+          return regex.test(item.file_name);
+        });
+
+        if (seasonFolder) {
+          console.log(`[FebBox Direct] Found season folder on page ${page}:`, seasonFolder.file_name);
+          break;
+        }
       }
 
-      console.log('[FebBox Direct] Found season folder:', seasonFolder.file_name);
+      if (!seasonFolder) {
+        console.log('[FebBox Direct] Season folder not found after checking all pages');
+        return { success: false, error: `Season ${season} folder not found` };
+      }
 
       // Fetch files from season folder
       const seasonResponse = await fetch(
@@ -511,8 +520,21 @@ export const getFebBoxStreamDirect = async (
       console.log('[FebBox Direct] Selected file (largest):', targetFile.file_name, targetFile.file_size);
 
     } else {
-      // Step 3: Handle movies
       console.log('[FebBox Direct] Handling movie');
+
+      const rootResponse = await fetch(
+        `https://www.febbox.com/file/file_share_list?page=1&share_key=${febboxShareKey}&pwd=&parent_id=0&is_html=0`,
+        { headers }
+      );
+
+      if (!rootResponse.ok) {
+        throw new Error(`Root fetch failed: ${rootResponse.status}`);
+      }
+
+      const rootData: FebBoxSearchResponse = await rootResponse.json();
+      const fileList = rootData.data.file_list;
+
+      console.log('[FebBox Direct] Root items found:', fileList.length);
 
       const videoFiles = fileList.filter(f => f.is_dir !== 1);
       
@@ -534,7 +556,7 @@ export const getFebBoxStreamDirect = async (
       return { success: false, error: 'No suitable file found' };
     }
 
-    // Step 4: Get media URL
+    // Get media URL
     console.log('[FebBox Direct] Fetching media URL for FID:', targetFile.fid);
 
     const mediaResponse = await fetch(

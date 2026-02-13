@@ -129,13 +129,30 @@ export const DetailScreen: React.FC<DetailScreenProps> = ({ route, navigation })
       let result;
 
       if (shareKey) {
-        // Use direct FebBox share key
+        // Try using direct FebBox share key first
         console.log('[DetailScreen] Using direct share key:', shareKey);
         result = isTVShow
           ? await getFebBoxStreamDirect(shareKey, 'tv', selectedSeason, episodeNumber || selectedEpisode)
           : await getFebBoxStreamDirect(shareKey, 'movie');
+
+        // If direct method fails, fall back to API
+        if (!result.success) {
+          console.log('[DetailScreen] Share key failed, falling back to API');
+          
+          result = isTVShow
+            ? await getFebBoxStream(item.id, 'tv', selectedSeason, episodeNumber || selectedEpisode)
+            : await getFebBoxStream(item.id, 'movie');
+
+          // If API succeeds and returns a new share key, replace the old one
+          if (result.success && result.shareKey) {
+            console.log('[DetailScreen] Replacing old share key with new one:', result.shareKey);
+            setShareKey(result.shareKey);
+            const storageKey = getStorageKey();
+            await AsyncStorage.setItem(storageKey, result.shareKey);
+          }
+        }
       } else {
-        // Fall back to API
+        // No share key saved, use API directly
         console.log('[DetailScreen] Using TMDB-based API');
         result = isTVShow
           ? await getFebBoxStream(item.id, 'tv', selectedSeason, episodeNumber || selectedEpisode)
@@ -200,7 +217,6 @@ export const DetailScreen: React.FC<DetailScreenProps> = ({ route, navigation })
       setShareKey(undefined);
       const storageKey = getStorageKey();
       await AsyncStorage.removeItem(storageKey);
-      Alert.alert('Success', 'Share link cleared');
     } catch (error) {
       console.error('[DetailScreen] Error clearing share key:', error);
     }

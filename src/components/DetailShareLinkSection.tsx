@@ -11,6 +11,15 @@ interface DetailShareLinkSectionProps {
   existingShareKey?: string;
 }
 
+const extractShareKey = (input: string): string => {
+  const trimmed = input.trim();
+  const shareMatch = trimmed.match(/febbox\.com\/share\/([^/?#]+)/i);
+  if (shareMatch) {
+    return shareMatch[1];
+  }
+  return trimmed;
+};
+
 /**
  * Display and edit FebBox share link
  */
@@ -27,20 +36,20 @@ export const DetailShareLinkSection: React.FC<DetailShareLinkSectionProps> = ({
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async () => {
-    const trimmedKey = shareKey.trim();
+    const extractedKey = extractShareKey(shareKey);
     
-    if (!trimmedKey) {
+    if (!extractedKey) {
       return;
     }
 
     // Don't save if it hasn't changed
-    if (trimmedKey === existingShareKey) {
+    if (extractedKey === existingShareKey) {
       return;
     }
 
     try {
       setLoading(true);
-      await onSubmit(trimmedKey);
+      await onSubmit(extractedKey);
       setIsSaved(true);
     } catch (error) {
       Alert.alert('Error', 'Failed to save share link');

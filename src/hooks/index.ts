@@ -16,3 +16,4 @@ export * from './useSubtitlePreferences';
 export * from './useFebboxTokens';
 export * from './useSubtitleLanguages';
 export * from './useFebboxServer';
+export * from './useSubtitleStyling';

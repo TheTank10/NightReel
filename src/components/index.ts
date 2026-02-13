@@ -31,3 +31,4 @@ export * from './SettingsLanguagePicker';
 export * from './SettingsLanguageItem';
 export * from './SettingsFebboxServerItem';
 export * from './SettingsFebboxServerPicker';
+export * from './SettingsSubtitleCustomizerModal';
