@@ -20,11 +20,11 @@ export type SubtitleSortStrategy = 'smart' | 'popular' | 'recent';
 
 interface SubtitleSearchParams {
   tmdbId: number;
-  language: string; // e.g., 'eng', 'spa', 'fre'
+  language: string;
   mediaType: 'movie' | 'tv';
   season?: number;
   episode?: number;
-  sortBy?: SubtitleSortStrategy; // how to sort subtitle results
+  sortBy?: SubtitleSortStrategy;
 }
 
 interface OpenSubtitlesResponse {
@@ -41,9 +41,9 @@ interface SubtitleResult {
   success: boolean;
   srtContent?: string;
   error?: string;
-  totalAvailable?: number; // total subtitles found
-  currentIndex?: number; // which one we selected (0-based)
-  releaseName?: string; // the release name of the selected subtitle
+  totalAvailable?: number;
+  currentIndex?: number;
+  releaseName?: string;
 }
 
 /**
@@ -83,22 +83,124 @@ async function searchSubtitles(
 }
 
 /**
- * Download and decompress subtitle file using axios
+ * Convert ASS time format (H:MM:SS.CS) to SRT format (HH:MM:SS,MS)
+ * Example: "0:00:12.50" -> "00:00:12,500"
  */
-async function downloadAndDecompressSubtitle(downloadUrl: string): Promise<string> {
+function convertAssTimeToSrt(assTime: string): string {
+  const parts = assTime.split(':');
+  if (parts.length !== 3) return '00:00:00,000';
+  
+  const hours = parts[0].padStart(2, '0');
+  const minutes = parts[1].padStart(2, '0');
+  const secondsParts = parts[2].split('.');
+  const seconds = secondsParts[0].padStart(2, '0');
+  
+  // ASS uses centiseconds (1/100), convert to milliseconds
+  const centiseconds = secondsParts[1] || '00';
+  const milliseconds = (parseInt(centiseconds) * 10).toString().padStart(3, '0');
+  
+  return `${hours}:${minutes}:${seconds},${milliseconds}`;
+}
+
+/**
+ * Remove ASS formatting tags from text
+ */
+function cleanAssText(text: string): string {
+  return text
+    .replace(/\{[^}]+\}/g, '')      // Remove all {tags}
+    .replace(/\\N/g, '\n')           // Convert \N to newlines
+    .replace(/\\n/g, '\n')           // Convert \n to newlines
+    .replace(/\\h/g, ' ')            // Hard space to regular space
+    .trim();
+}
+
+/**
+ * Convert ASS/SSA format to SRT
+ */
+function assToSrt(content: string): string {
+  const lines = content.split('\n');
+  const dialogueLines = lines.filter(line => 
+    line.trim().startsWith('Dialogue:')
+  );
+  
+  if (dialogueLines.length === 0) {
+    // Not an ASS file or no dialogues found
+    return content;
+  }
+  
+  let srtOutput = '';
+  let counter = 1;
+  
+  for (const line of dialogueLines) {
+    // ASS Format: Dialogue: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
+    const dialoguePart = line.substring(line.indexOf(':') + 1).trim();
+    const parts = dialoguePart.split(',');
+    
+    if (parts.length < 10) continue;
+    
+    const start = parts[1].trim();
+    const end = parts[2].trim();
+    
+    // Text is everything after the 9th comma
+    const textStartIndex = parts.slice(0, 9).join(',').length + 9;
+    const text = cleanAssText(dialoguePart.substring(textStartIndex));
+    
+    if (!text) continue;
+    
+    srtOutput += `${counter}\n`;
+    srtOutput += `${convertAssTimeToSrt(start)} --> ${convertAssTimeToSrt(end)}\n`;
+    srtOutput += `${text}\n\n`;
+    counter++;
+  }
+  
+  return srtOutput || content;
+}
+
+/**
+ * Convert subtitle to SRT format if needed
+ */
+function convertToSrt(content: string, format: string): string {
+  const normalizedFormat = format.toLowerCase();
+  
+  if (normalizedFormat === 'srt') {
+    return content;
+  }
+  
+  if (normalizedFormat === 'ass' || normalizedFormat === 'ssa') {
+    try {
+      console.log(`Converting ${format} to SRT...`);
+      return assToSrt(content);
+    } catch (error) {
+      console.warn(`Failed to convert ${format}:`, error);
+      return content;
+    }
+  }
+  
+  // For other formats (VTT, etc), return as-is
+  // Most video players support VTT natively
+  return content;
+}
+
+/**
+ * Download and decompress subtitle file
+ */
+async function downloadAndDecompressSubtitle(
+  downloadUrl: string,
+  format: string
+): Promise<string> {
   try {
     const response = await axios.get(downloadUrl, {
       responseType: 'arraybuffer',
       timeout: 30000,
     });
     
-    // Decompress gzipped file
     const compressed = new Uint8Array(response.data);
     const decompressed = pako.ungzip(compressed);
     
-    // Convert to text
     const textDecoder = new TextDecoder('utf-8');
-    const srtContent = textDecoder.decode(decompressed);
+    const content = textDecoder.decode(decompressed);
+    
+    const srtContent = convertToSrt(content, format);
     
     return srtContent;
   } catch (error) {
@@ -107,31 +209,25 @@ async function downloadAndDecompressSubtitle(downloadUrl: string): Promise<strin
 }
 
 /**
- * Score subtitle based on how likely it matches streaming sources
- * Higher score = better match
+ * Score subtitle based on streaming source compatibility
  */
 function scoreSubtitleForStreaming(subtitle: OpenSubtitlesResponse): number {
   const name = subtitle.MovieName.toLowerCase();
   let score = 0;
   
-  // Modern streaming releases (best for new content)
   if (name.includes('web-dl')) score += 100;
   if (name.includes('webrip')) score += 90;
   if (name.includes('web.')) score += 85;
   if (name.includes('amzn') || name.includes('nf') || name.includes('dsnp')) score += 80;
   
-  // Physical media releases (good for older content, complete episodes)
   if (name.includes('bluray') || name.includes('brrip') || name.includes('bdrip')) score += 70;
   if (name.includes('dvdrip')) score += 60;
   
-  // AVOID broadcast releases (has "Previously on..." intros and ads)
   if (name.includes('hdtv')) score -= 100;
   
-  // Add download popularity bonus
   const downloads = parseInt(subtitle.SubDownloadsCnt) || 0;
   score += Math.min(downloads / 10000, 30);
   
-  // Prefer HI (hearing impaired) or CC (closed captions) for completeness
   if (name.includes('.hi.') || name.includes('.cc.')) score += 5;
   
   return score;
@@ -148,7 +244,6 @@ function sortSubtitles(
   
   switch (strategy) {
     case 'popular':
-      // Sort purely by download count (most popular first)
       return sorted.sort((a, b) => {
         const downloadsA = parseInt(a.SubDownloadsCnt) || 0;
         const downloadsB = parseInt(b.SubDownloadsCnt) || 0;
@@ -156,12 +251,10 @@ function sortSubtitles(
       });
       
     case 'recent':
-      // Keep original order from API (usually most recent first)
       return sorted;
       
     case 'smart':
     default:
-      // Smart scoring (avoid HDTV, prefer WEB/BluRay + popularity)
       return sorted.sort((a, b) => {
         const scoreA = scoreSubtitleForStreaming(a);
         const scoreB = scoreSubtitleForStreaming(b);
@@ -195,10 +288,7 @@ export async function getSubtitles(
       };
     }
     
-    // Sort results based on strategy
     const sortedResults = sortSubtitles(results, sortBy);
-    
-    // Use the requested index, or fall back to 0 if out of bounds
     const actualIndex = Math.min(subtitleIndex, sortedResults.length - 1);
     const selectedSubtitle = sortedResults[actualIndex];
     
@@ -209,7 +299,10 @@ export async function getSubtitles(
       };
     }
 
-    const srtContent = await downloadAndDecompressSubtitle(selectedSubtitle.SubDownloadLink);
+    const srtContent = await downloadAndDecompressSubtitle(
+      selectedSubtitle.SubDownloadLink,
+      selectedSubtitle.SubFormat
+    );
     
     return {
       success: true,
