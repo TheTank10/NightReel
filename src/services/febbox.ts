@@ -1,4 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import CryptoJS from 'crypto-js';
+import { getImdbId } from './tmdb';
 
 const TOKENS_STORAGE_KEY = '@febbox_tokens';
 const PRIMARY_TOKEN_INDEX_KEY = '@febbox_primary_token_index';
@@ -62,16 +64,24 @@ interface FebBoxMediaResponse {
   html: string;
 }
 
+interface ShowBoxSearchResult {
+  id: number;
+  box_type: number;
+  title: string;
+  year?: number;
+  imdb_rating?: string;
+}
+
 /**
  * Get selected server from storage, default to USA7
  */
 const getSelectedServer = async (): Promise<string> => {
   try {
     const serverId = await AsyncStorage.getItem(SERVER_STORAGE_KEY);
-    return serverId || 'USA7'; // Default to USA7
+    return serverId || 'USA7';
   } catch (error) {
     console.error('Error getting server:', error);
-    return 'USA7'; // Default to USA7 on error
+    return 'USA7';
   }
 };
 
@@ -80,7 +90,7 @@ const getSelectedServer = async (): Promise<string> => {
  */
 const getFebBoxHeaders = async (token: string, referer: string) => {
   const FAKE_G_STATE = '{"i_l":0,"i_ll":9999999999999,"i_b":"AAAABBBBCCCCDDDDEEEEFFFFGGGGHHHHIIIIJJJJKKKK","i_e":{"enable_itp_optimization":1}}';
-  const OSS_GROUP = await getSelectedServer(); // Get from settings
+  const OSS_GROUP = await getSelectedServer();
   const cookieString = `g_state=${FAKE_G_STATE}; ui=${token}; oss_group=${OSS_GROUP}`;
   
   return {
@@ -92,6 +102,790 @@ const getFebBoxHeaders = async (token: string, referer: string) => {
     'Accept-Language': 'en-US,en;q=0.9',
     'Origin': 'https://www.febbox.com',
   };
+};
+
+/**
+ * Fetch with timeout
+ */
+const fetchWithTimeout = async (
+  url: string,
+  options: RequestInit = {},
+  timeout: number = 15000
+): Promise<Response> => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    throw error;
+  }
+};
+
+/**
+ * ShowBox Encrypted API Client (Expo-compatible with crypto-js)
+ */
+class ShowBoxAPI {
+  private baseUrl = 'https://mbpapi.shegu.net/api/api_client/index/';
+  private appKey = 'moviebox';
+  private key = '123d6cedf626dy54233aa1w6';
+  private iv = 'wEiphTn!';
+
+  /**
+   * Encrypt data using TripleDES (crypto-js)
+   */
+  private encrypt(data: string): string {
+    const keyBytes = CryptoJS.enc.Utf8.parse(this.key);
+    const ivBytes = CryptoJS.enc.Utf8.parse(this.iv);
+    
+    const encrypted = CryptoJS.TripleDES.encrypt(data, keyBytes, {
+      iv: ivBytes,
+      mode: CryptoJS.mode.CBC,
+      padding: CryptoJS.pad.Pkcs7
+    });
+    
+    return encrypted.toString();
+  }
+
+  /**
+   * Generate MD5 hash
+   */
+  private md5(data: string): string {
+    return CryptoJS.MD5(data).toString();
+  }
+
+  /**
+   * Generate verification hash
+   */
+  private generateVerify(encryptedData: string): string {
+    const appKeyHash = this.md5(this.appKey);
+    const verifyString = appKeyHash + this.key + encryptedData;
+    return this.md5(verifyString);
+  }
+
+  /**
+   * Get expiry timestamp (12 hours from now)
+   */
+  private getExpiryTimestamp(): number {
+    return Math.floor(Date.now() / 1000) + 60 * 60 * 12;
+  }
+
+  /**
+   * Generate random token (32 hex chars)
+   */
+  private nanoid(length: number = 32): string {
+    const alphabet = '0123456789abcdef';
+    let result = '';
+    for (let i = 0; i < length; i++) {
+      result += alphabet[Math.floor(Math.random() * alphabet.length)];
+    }
+    return result;
+  }
+
+  /**
+   * Make encrypted API request
+   */
+  async request(module: string, params: Record<string, any> = {}): Promise<any> {
+    const requestData = {
+      childmode: '0',
+      app_version: '11.5',
+      lang: 'en',
+      platform: 'android',
+      channel: 'Website',
+      appid: '27',
+      expired_date: this.getExpiryTimestamp(),
+      module,
+      ...params,
+    };
+
+    const encryptedData = this.encrypt(JSON.stringify(requestData));
+    
+    const body = JSON.stringify({
+      app_key: this.md5(this.appKey),
+      verify: this.generateVerify(encryptedData),
+      encrypt_data: encryptedData,
+    });
+
+    const base64Body = btoa(body);
+
+    const formData = new URLSearchParams({
+      data: base64Body,
+      appid: '27',
+      platform: 'android',
+      version: '129',
+      medium: 'Website',
+    });
+
+    const bodyString = formData.toString() + `&token=${this.nanoid()}`;
+
+    const response = await fetch(this.baseUrl, {
+      method: 'POST',
+      headers: {
+        'Platform': 'android',
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'User-Agent': 'okhttp/3.2.0',
+      },
+      body: bodyString,
+    });
+
+    return response.json();
+  }
+
+  /**
+   * Search for content by IMDB ID or title
+   */
+  async search(keyword: string, type: string = 'all'): Promise<ShowBoxSearchResult[]> {
+    try {
+      const result = await this.request('Search5', {
+        page: 1,
+        type,
+        keyword,
+        pagelimit: 20,
+      });
+      
+      return result?.data || [];
+    } catch (error) {
+      console.error('[ShowBox API] Search error:', error);
+      return [];
+    }
+  }
+}
+
+const getFebBoxShareKey = async (
+  showboxMediaId: number,
+  boxType: number
+): Promise<string | null> => {
+  try {
+    // Use FebBox's direct endpoint
+    const url = `https://www.febbox.com/mbp/to_share_page?box_type=${boxType}&mid=${showboxMediaId}&json=1`;
+    
+    console.log('[FebBox] Getting share key from /mbp/to_share_page');
+    
+    const response = await fetchWithTimeout(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'application/json',
+      },
+    }, 10000);
+
+    if (!response.ok) {
+      console.log('[FebBox] Share key request failed:', response.status);
+      return null;
+    }
+
+    const data = await response.json();
+    
+    // Expected response: {"code":1,"msg":"success","data":{"share_link":"https://www.febbox.com/share/Bp1Hw1MK"}}
+    const shareLink = data?.data?.share_link || data?.data?.link;
+    
+    if (!shareLink) {
+      console.log('[FebBox] No share_link in response:', data);
+      return null;
+    }
+
+    // Extract share key: https://www.febbox.com/share/Bp1Hw1MK -> Bp1Hw1MK
+    const shareKey = shareLink.split('/').pop();
+    
+    console.log('[FebBox] Got share key:', shareKey);
+    return shareKey || null;
+    
+  } catch (error) {
+    console.error('[FebBox] Share key error:', error);
+    return null;
+  }
+};
+
+/**
+ * Extract FID from single file share HTML
+ */
+const extractFidFromHtml = async (
+  febboxShareKey: string,
+  headers: HeadersInit
+): Promise<string | null> => {
+  try {
+    const htmlUrl = `https://www.febbox.com/share/${febboxShareKey}`;
+    
+    const response = await fetch(htmlUrl, { headers });
+    if (!response.ok) {
+      throw new Error(`HTML fetch failed: ${response.status}`);
+    }
+    
+    const html = await response.text();
+    
+    const patterns = [
+      /class="[^"]*play_video[^"]*"\s+data-id="(\d+)"/,
+      /class="details"\s+data-id="(\d+)"/,
+      /data-id="(\d+)"/
+    ];
+    
+    for (const pattern of patterns) {
+      const match = html.match(pattern);
+      if (match) {
+        console.log('[FebBox Direct] Extracted FID:', match[1]);
+        return match[1];
+      }
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('[FebBox Direct] FID extraction error:', error);
+    return null;
+  }
+};
+
+/**
+ * Get stream directly from FebBox share key
+ */
+export const getFebBoxStreamDirect = async (
+  febboxShareKey: string,
+  type: 'movie' | 'tv',
+  season?: number,
+  episode?: number
+): Promise<FebBoxStreamResult> => {
+  if (type === 'tv' && (season === undefined || episode === undefined)) {
+    return { success: false, error: 'Season and episode required for TV shows' };
+  }
+
+  try {
+    const stored = await AsyncStorage.getItem(TOKENS_STORAGE_KEY);
+    if (!stored) {
+      return { success: false, error: 'No FebBox tokens configured' };
+    }
+
+    const tokens: string[] = JSON.parse(stored);
+    if (tokens.length === 0) {
+      return { success: false, error: 'No tokens available' };
+    }
+
+    const token = tokens[0];
+    const shareUrl = `https://www.febbox.com/share/${febboxShareKey}`;
+    const headers = await getFebBoxHeaders(token, shareUrl);
+
+    console.log('[FebBox Direct] Starting:', { shareKey: febboxShareKey, type, season, episode });
+
+    // Check if single file or folder
+    const rootResponse = await fetch(
+      `https://www.febbox.com/file/file_share_list?page=1&share_key=${febboxShareKey}&pwd=&parent_id=0&is_html=0`,
+      { headers }
+    );
+
+    if (!rootResponse.ok) {
+      throw new Error(`Root fetch failed: ${rootResponse.status}`);
+    }
+
+    const rootData: FebBoxSearchResponse = await rootResponse.json();
+    const fileList = rootData.data.file_list;
+
+    console.log('[FebBox Direct] Root items:', fileList.length);
+
+    // Single file share
+    if (fileList.length === 0) {
+      const fid = await extractFidFromHtml(febboxShareKey, headers);
+      
+      if (!fid) {
+        return { success: false, error: 'Could not extract FID from single file share' };
+      }
+
+      const mediaResponse = await fetch(
+        `https://www.febbox.com/console/video_quality_list?fid=${fid}`,
+        { headers }
+      );
+
+      if (!mediaResponse.ok) {
+        throw new Error(`Media URL fetch failed: ${mediaResponse.status}`);
+      }
+
+      const mediaData: FebBoxMediaResponse = await mediaResponse.json();
+      const qualityHtml = mediaData.html;
+
+      const hlsMatch = qualityHtml.match(/data-url="(https?:\/\/[^"]*(?:hls|\.m3u8)[^"]*)"/);
+      
+      if (hlsMatch) {
+        let hlsUrl = hlsMatch[1];
+        hlsUrl = hlsUrl.replace(/&quality=[^&]+/, '');
+
+        return {
+          success: true,
+          streamUrl: hlsUrl,
+          streamType: 'hls',
+          quality: 'Master (Adaptive)',
+          size: 'Unknown',
+          shareKey: febboxShareKey,
+        };
+      }
+
+      const orgMatch = qualityHtml.match(/data-url="([^"]+)"[^>]*data-quality="ORG"/);
+      
+      if (orgMatch) {
+        return {
+          success: true,
+          streamUrl: orgMatch[1],
+          streamType: 'mp4',
+          quality: 'Original',
+          size: 'Unknown',
+          shareKey: febboxShareKey,
+        };
+      }
+
+      return { success: false, error: 'No streamable URL for single file' };
+    }
+
+    // Folder share - find target file
+    let targetFile: FebBoxFile | null = null;
+
+    if (type === 'tv' && season !== undefined) {
+      // Find season folder
+      let seasonFolder = null;
+      const maxPages = 3;
+
+      for (let page = 1; page <= maxPages; page++) {
+        const pageResponse = await fetch(
+          `https://www.febbox.com/file/file_share_list?page=${page}&share_key=${febboxShareKey}&pwd=&parent_id=0&is_html=0`,
+          { headers }
+        );
+
+        if (!pageResponse.ok) continue;
+
+        const pageData: FebBoxSearchResponse = await pageResponse.json();
+        const pageFileList = pageData.data.file_list;
+
+        seasonFolder = pageFileList.find(item => {
+          if (item.is_dir !== 1) return false;
+          const regex = new RegExp(`season\\s*0*${season}\\b`, 'i');
+          return regex.test(item.file_name);
+        });
+
+        if (seasonFolder) {
+          console.log('[FebBox Direct] Found season folder:', seasonFolder.file_name);
+          break;
+        }
+      }
+
+      if (!seasonFolder) {
+        return { success: false, error: `Season ${season} folder not found` };
+      }
+
+      // Get files from season folder
+      const seasonResponse = await fetch(
+        `https://www.febbox.com/file/file_share_list?share_key=${febboxShareKey}&pwd=&parent_id=${seasonFolder.fid}&is_html=0`,
+        { headers }
+      );
+
+      if (!seasonResponse.ok) {
+        throw new Error(`Season folder fetch failed: ${seasonResponse.status}`);
+      }
+
+      const seasonData: FebBoxSearchResponse = await seasonResponse.json();
+      const seasonFiles = seasonData.data.file_list.filter(f => f.is_dir !== 1);
+
+      const episodeFiles = seasonFiles.filter(f => {
+        const match = f.file_name.match(/[Ss]\d+[Ee](\d+)/);
+        if (!match) return false;
+        const fileEpisode = parseInt(match[1], 10);
+        return fileEpisode === episode;
+      });
+
+      if (episodeFiles.length === 0) {
+        return { success: false, error: `Episode ${episode} not found` };
+      }
+
+      targetFile = episodeFiles.reduce((largest, current) => 
+        current.file_size_bytes > largest.file_size_bytes ? current : largest
+      );
+
+      console.log('[FebBox Direct] Selected episode:', targetFile.file_name);
+
+    } else {
+      // Movie
+      const videoFiles = fileList.filter(f => f.is_dir !== 1);
+      
+      if (videoFiles.length === 0) {
+        return { success: false, error: 'No video files found' };
+      }
+
+      targetFile = videoFiles.reduce((largest, current) => 
+        current.file_size_bytes > largest.file_size_bytes ? current : largest
+      );
+
+      console.log('[FebBox Direct] Selected movie:', targetFile.file_name);
+    }
+
+    if (!targetFile) {
+      return { success: false, error: 'No suitable file found' };
+    }
+
+    // Get media URL
+    const mediaResponse = await fetch(
+      `https://www.febbox.com/console/video_quality_list?fid=${targetFile.fid}`,
+      { headers }
+    );
+
+    if (!mediaResponse.ok) {
+      throw new Error(`Media URL fetch failed: ${mediaResponse.status}`);
+    }
+
+    const mediaData: FebBoxMediaResponse = await mediaResponse.json();
+    const qualityHtml = mediaData.html;
+
+    const hlsMatch = qualityHtml.match(/data-url="(https?:\/\/[^"]*(?:hls|\.m3u8)[^"]*)"/);
+    
+    if (hlsMatch) {
+      let hlsUrl = hlsMatch[1];
+      hlsUrl = hlsUrl.replace(/&quality=[^&]+/, '');
+
+      return {
+        success: true,
+        streamUrl: hlsUrl,
+        streamType: 'hls',
+        quality: 'Master (Adaptive)',
+        size: targetFile.file_size,
+        shareKey: febboxShareKey,
+      };
+    }
+
+    const orgMatch = qualityHtml.match(/data-url="([^"]+)"[^>]*data-quality="ORG"/);
+    
+    if (orgMatch) {
+      return {
+        success: true,
+        streamUrl: orgMatch[1],
+        streamType: 'mp4',
+        quality: 'Original',
+        size: targetFile.file_size,
+        shareKey: febboxShareKey,
+      };
+    }
+
+    return { success: false, error: 'No streamable URL available' };
+
+  } catch (error) {
+    console.error('[FebBox Direct] Error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+};
+
+/**
+ * Method 1: ShowBox Encrypted API → FebBox Share Key → Direct FebBox
+ * Flow: TMDB → IMDB → ShowBox API search → ShowBox media ID → FebBox /mbp/to_share_page → Share key → Stream
+ */
+const getFebBoxStreamViaShowBox = async (
+  tmdbId: string | number,
+  type: 'movie' | 'tv',
+  season?: number,
+  episode?: number
+): Promise<FebBoxStreamResult> => {
+  try {
+    console.log('[ShowBox API] Starting for TMDB:', tmdbId);
+    
+    // 1. Convert TMDB → IMDB
+    const imdbId = await getImdbId(Number(tmdbId), type);
+    if (!imdbId) {
+      return { success: false, error: 'Could not get IMDB ID from TMDB' };
+    }
+
+    console.log('[ShowBox API] IMDB ID:', imdbId);
+
+    // 2. Search ShowBox encrypted API with IMDB ID
+    const api = new ShowBoxAPI();
+    const searchResults = await api.search(imdbId, type === 'movie' ? 'movie' : 'all');
+    
+    if (!searchResults || searchResults.length === 0) {
+      console.log('[ShowBox API] No results found');
+      return { success: false, error: 'No results from ShowBox API' };
+    }
+
+    const result = searchResults[0];
+    const showboxMediaId = result.id;
+    const boxType = result.box_type; // 1 = movie, 2 = tv
+
+    console.log('[ShowBox API] Found:', result.title, '- ShowBox ID:', showboxMediaId, 'Box Type:', boxType);
+
+    // 3. Get FebBox share key using /mbp/to_share_page
+    const shareKey = await getFebBoxShareKey(showboxMediaId, boxType);
+    
+    if (!shareKey) {
+      return { success: false, error: 'Could not get FebBox share key' };
+    }
+
+    console.log('[ShowBox API] Share key:', shareKey);
+
+    // 4. Use direct FebBox API with share key
+    const streamResult = await getFebBoxStreamDirect(shareKey, type, season, episode);
+    
+    if (streamResult.success) {
+      console.log('[ShowBox API] SUCCESS via ShowBox encrypted API!');
+    }
+    
+    return streamResult;
+
+  } catch (error) {
+    console.error('[ShowBox API] Error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'ShowBox API error',
+    };
+  }
+};
+
+/**
+ * Method 2: Nuvio API fallback
+ */
+const getFebBoxStreamViaNuvio = async (
+  tmdbId: string | number,
+  type: 'movie' | 'tv',
+  season?: number,
+  episode?: number
+): Promise<FebBoxStreamResult> => {
+  try {
+    const stored = await AsyncStorage.getItem(TOKENS_STORAGE_KEY);
+    if (!stored) {
+      return { success: false, error: 'No tokens configured' };
+    }
+
+    const tokens: string[] = JSON.parse(stored);
+    if (tokens.length === 0) {
+      return { success: false, error: 'No tokens available' };
+    }
+
+    const primaryIndexStr = await AsyncStorage.getItem(PRIMARY_TOKEN_INDEX_KEY);
+    let primaryIndex = primaryIndexStr ? parseInt(primaryIndexStr, 10) : 0;
+
+    if (primaryIndex >= tokens.length || primaryIndex < 0) {
+      primaryIndex = 0;
+    }
+
+    const selectedServer = await getSelectedServer();
+
+    for (let i = 0; i < tokens.length; i++) {
+      const currentIndex = (primaryIndex + i) % tokens.length;
+      const token = tokens[currentIndex];
+
+      console.log(`[Nuvio] Trying token ${currentIndex + 1}/${tokens.length}`);
+
+      const apiUrl = type === 'tv'
+        ? `https://febapi.nuvioapp.space/api/media/tv/${tmdbId}/oss=${selectedServer}/${season}/${episode}?cookie=${encodeURIComponent(token)}`
+        : `https://febapi.nuvioapp.space/api/media/movie/${tmdbId}/oss=${selectedServer}?cookie=${encodeURIComponent(token)}`;
+
+      try {
+        const response = await fetchWithTimeout(apiUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0',
+            'Accept': 'application/json',
+          },
+        });
+
+        if ([500, 502, 503, 504].includes(response.status)) {
+          console.log('[Nuvio] Service error, skipping to next method');
+          break;
+        }
+
+        if (!response.ok) {
+          console.log(`[Nuvio] Token ${currentIndex + 1} failed: ${response.status}`);
+          continue;
+        }
+
+        const data = await response.json();
+
+        if (!data.success || !data.versions?.length) {
+          console.log(`[Nuvio] Token ${currentIndex + 1}: No streams`);
+          continue;
+        }
+
+        const allStreams: Array<{
+          url: string;
+          quality: string;
+          size: string;
+          type: 'hls' | 'mp4' | 'other';
+        }> = [];
+
+        for (const version of data.versions) {
+          for (const link of version.links || []) {
+            if (!link.url) continue;
+            
+            const url = link.url.toLowerCase();
+            const streamType = url.includes('.m3u8') ? 'hls' : url.includes('.mp4') ? 'mp4' : 'other';
+            
+            allStreams.push({
+              url: link.url,
+              quality: link.quality || 'Unknown',
+              size: link.size || 'Unknown',
+              type: streamType,
+            });
+          }
+        }
+
+        if (!allStreams.length) continue;
+
+        if (currentIndex !== primaryIndex) {
+          await AsyncStorage.setItem(PRIMARY_TOKEN_INDEX_KEY, currentIndex.toString());
+        }
+
+        let best = allStreams.find(s => s.type === 'hls') || allStreams[0];
+
+        if (best.type === 'hls') {
+          try {
+            const url = new URL(best.url);
+            url.searchParams.delete('quality');
+            best = { ...best, url: url.toString(), quality: 'Master (Adaptive)' };
+          } catch (e) {
+            // Use as-is
+          }
+        }
+
+        console.log('[Nuvio] SUCCESS!');
+
+        return {
+          success: true,
+          streamUrl: best.url,
+          streamType: best.type,
+          quality: best.quality,
+          size: best.size,
+          shareKey: data.shareKey,
+          allStreams,
+        };
+
+      } catch (error) {
+        console.log(`[Nuvio] Token ${currentIndex + 1} error:`, error instanceof Error ? error.message : 'Unknown');
+        continue;
+      }
+    }
+
+    return { success: false, error: 'All Nuvio tokens failed' };
+
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Nuvio error',
+    };
+  }
+};
+
+/**
+ * Method 3: Aether API fallback
+ */
+const getFebBoxStreamViaAether = async (
+  tmdbId: string | number,
+  type: 'movie' | 'tv',
+  season?: number,
+  episode?: number
+): Promise<FebBoxStreamResult> => {
+  try {
+    const stored = await AsyncStorage.getItem(TOKENS_STORAGE_KEY);
+    if (!stored) {
+      return { success: false, error: 'No tokens configured' };
+    }
+
+    const tokens: string[] = JSON.parse(stored);
+    if (tokens.length === 0) {
+      return { success: false, error: 'No tokens available' };
+    }
+
+    const token = tokens[0];
+
+    const apiUrl = type === 'tv'
+      ? `https://fembox.aether.mom/hls/tv/${tmdbId}/${season}/${episode}?ui=${encodeURIComponent(token)}`
+      : `https://fembox.aether.mom/hls/movie/${tmdbId}?ui=${encodeURIComponent(token)}`;
+
+    console.log('[Aether] Trying last resort fallback...');
+
+    const response = await fetchWithTimeout(apiUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0',
+        'Accept': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      return { success: false, error: `Aether failed: ${response.status}` };
+    }
+
+    const data = await response.json();
+
+    if (!data.hls) {
+      return { success: false, error: 'No HLS in Aether response' };
+    }
+
+    console.log('[Aether] SUCCESS!');
+
+    return {
+      success: true,
+      streamUrl: data.hls,
+      streamType: 'hls',
+      quality: 'Auto',
+      size: 'Unknown',
+      allStreams: [{
+        url: data.hls,
+        quality: 'Auto',
+        size: 'Unknown',
+        type: 'hls',
+      }],
+    };
+
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Aether error',
+    };
+  }
+};
+
+/**
+ * MAIN FUNCTION: Get FebBox stream with 3-tier fallback system
+ * 1. ShowBox encrypted API → FebBox /mbp/to_share_page → Direct FebBox
+ * 2. Nuvio API
+ * 3. Aether API
+ */
+export const getFebBoxStream = async (
+  tmdbId: string | number,
+  type: 'movie' | 'tv',
+  season?: number,
+  episode?: number
+): Promise<FebBoxStreamResult> => {
+  if (type === 'tv' && (season === undefined || episode === undefined)) {
+    return { success: false, error: 'Season and episode required for TV' };
+  }
+
+  console.log('FebBox Stream Request:', { tmdbId, type, season, episode });
+
+  console.log('\n[Method 1] Trying ShowBox encrypted API...');
+  const showboxResult = await getFebBoxStreamViaShowBox(tmdbId, type, season, episode);
+  
+  if (showboxResult.success) {
+    console.log('ShowBox API success!\n');
+    return showboxResult;
+  }
+  
+  console.log('ShowBox API failed:', showboxResult.error);
+
+  console.log('\n[Method 2] Trying Nuvio API...');
+  const nuvioResult = await getFebBoxStreamViaNuvio(tmdbId, type, season, episode);
+  
+  if (nuvioResult.success) {
+    console.log('Nuvio API success!\n');
+    return nuvioResult;
+  }
+  
+  console.log('Nuvio API failed:', nuvioResult.error);
+
+  console.log('\n[Method 3] Trying Aether API (last resort)...');
+  const aetherResult = await getFebBoxStreamViaAether(tmdbId, type, season, episode);
+  
+  if (aetherResult.success) {
+    console.log('Aether API success!\n');
+    return aetherResult;
+  }
+  
+  console.log('All methods failed\n');
+  return { success: false, error: 'All streaming methods failed' };
 };
 
 /**
@@ -107,7 +901,7 @@ export const validateFebBoxToken = async (
   try {
     const url = 'https://www.febbox.com/console/user_traffic_query';
     const FAKE_G_STATE = '{"i_l":0,"i_ll":9999999999999,"i_b":"AAAABBBBCCCCDDDDEEEEFFFFGGGGHHHHIIIIJJJJKKKK","i_e":{"enable_itp_optimization":1}}';
-    const OSS_GROUP = await getSelectedServer(); // Get from settings
+    const OSS_GROUP = await getSelectedServer();
     const cookieString = `g_state=${FAKE_G_STATE}; ui=${uiToken}; oss_group=${OSS_GROUP}`;
     
     const headers = {
@@ -153,568 +947,4 @@ export const validateFebBoxToken = async (
  */
 export const hasTrafficRemaining = (data: FebBoxTrafficData): boolean => {
   return data.traffic_usage_mb < data.traffic_limit_mb;
-};
-
-/**
- * Fetch with timeout helper for React Native
- */
-const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeout: number = 15000): Promise<Response> => {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeout);
-  
-  try {
-    const response = await fetch(url, {
-      ...options,
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
-    return response;
-  } catch (error) {
-    clearTimeout(timeoutId);
-    throw error;
-  }
-};
-
-/**
- * Fallback to Aether API when febapi is down
- */
-const getFebBoxStreamFromAether = async (
-  tmdbId: string | number,
-  type: 'movie' | 'tv',
-  season?: number,
-  episode?: number
-): Promise<FebBoxStreamResult> => {
-  try {
-    const stored = await AsyncStorage.getItem(TOKENS_STORAGE_KEY);
-    if (!stored) {
-      return { success: false, error: 'No tokens configured' };
-    }
-
-    const tokens: string[] = JSON.parse(stored);
-    if (tokens.length === 0) {
-      return { success: false, error: 'No tokens available' };
-    }
-
-    const token = tokens[0];
-
-    const apiUrl = type === 'tv'
-      ? `https://fembox.aether.mom/hls/tv/${tmdbId}/${season}/${episode}?ui=${encodeURIComponent(token)}`
-      : `https://fembox.aether.mom/hls/movie/${tmdbId}?ui=${encodeURIComponent(token)}`;
-
-    console.log('[FebBox] Using fallback Aether API');
-
-    const response = await fetchWithTimeout(apiUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0',
-        'Accept': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      return { success: false, error: `Aether API failed: ${response.status}` };
-    }
-
-    const data = await response.json();
-
-    if (!data.hls) {
-      return { success: false, error: 'No HLS stream in Aether response' };
-    }
-
-    console.log('[FebBox] Aether API success');
-
-    return {
-      success: true,
-      streamUrl: data.hls,
-      streamType: 'hls',
-      quality: 'Auto',
-      size: 'Unknown',
-      allStreams: [{
-        url: data.hls,
-        quality: 'Auto',
-        size: 'Unknown',
-        type: 'hls',
-      }],
-    };
-
-  } catch (error) {
-    return {
-      success: false,
-      error: 'Aether API error: ' + (error instanceof Error ? error.message : 'Unknown'),
-    };
-  }
-};
-
-/**
- * Get streaming URL with automatic token cycling and fallback
- */
-export const getFebBoxStream = async (
-  tmdbId: string | number,
-  type: 'movie' | 'tv',
-  season?: number,
-  episode?: number
-): Promise<FebBoxStreamResult> => {
-  if (type === 'tv' && (season === undefined || episode === undefined)) {
-    return { success: false, error: 'Season and episode required for TV' };
-  }
-
-  try {
-    const stored = await AsyncStorage.getItem(TOKENS_STORAGE_KEY);
-    if (!stored) {
-      return { success: false, error: 'No tokens configured' };
-    }
-
-    const tokens: string[] = JSON.parse(stored);
-    if (tokens.length === 0) {
-      return { success: false, error: 'No tokens available' };
-    }
-
-    const primaryIndexStr = await AsyncStorage.getItem(PRIMARY_TOKEN_INDEX_KEY);
-    let primaryIndex = primaryIndexStr ? parseInt(primaryIndexStr, 10) : 0;
-
-    if (primaryIndex >= tokens.length || primaryIndex < 0) {
-      primaryIndex = 0;
-      await AsyncStorage.setItem(PRIMARY_TOKEN_INDEX_KEY, '0');
-    }
-
-    const selectedServer = await getSelectedServer(); // Get from settings
-    let shouldFallbackToAether = false;
-
-    for (let i = 0; i < tokens.length; i++) {
-      const currentIndex = (primaryIndex + i) % tokens.length;
-      const token = tokens[currentIndex];
-
-      console.log(`[FebBox] Trying token ${currentIndex + 1}/${tokens.length} with server ${selectedServer}`);
-
-      const apiUrl = type === 'tv'
-        ? `https://febapi.nuvioapp.space/api/media/tv/${tmdbId}/oss=${selectedServer}/${season}/${episode}?cookie=${encodeURIComponent(token)}`
-        : `https://febapi.nuvioapp.space/api/media/movie/${tmdbId}/oss=${selectedServer}?cookie=${encodeURIComponent(token)}`;
-
-      try {
-        const response = await fetchWithTimeout(apiUrl, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0',
-            'Accept': 'application/json',
-          },
-        });
-
-        // Check for service unavailable errors
-        if ([500, 502, 503, 504].includes(response.status)) {
-          console.log(`[FebBox] Service error (${response.status}), falling back to Aether`);
-          shouldFallbackToAether = true;
-          break;
-        }
-
-        if (!response.ok) {
-          console.log(`[FebBox] Token ${currentIndex + 1} failed: HTTP ${response.status}`);
-          continue;
-        }
-
-        const data = await response.json();
-
-        if (!data.success || !data.versions?.length) {
-          console.log(`[FebBox] Token ${currentIndex + 1} failed: ${data.error || 'No streams'}`);
-          continue;
-        }
-
-        // Extract share key from response
-        const shareKey = data.shareKey || null;
-        if (shareKey) {
-          console.log('[FebBox] Share key received from API:', shareKey);
-        }
-
-        const allStreams: Array<{ url: string; quality: string; size: string; type: 'hls' | 'mp4' | 'other' }> = [];
-
-        for (const version of data.versions) {
-          for (const link of version.links || []) {
-            if (!link.url) continue;
-            
-            const url = link.url.toLowerCase();
-            const streamType = url.includes('.m3u8') ? 'hls' : url.includes('.mp4') ? 'mp4' : 'other';
-            
-            allStreams.push({
-              url: link.url,
-              quality: link.quality || link.name || 'Unknown',
-              size: link.size || version.size || 'Unknown',
-              type: streamType,
-            });
-          }
-        }
-
-        if (!allStreams.length) {
-          console.log(`[FebBox] Token ${currentIndex + 1} failed: No valid streams`);
-          continue;
-        }
-
-        if (currentIndex !== primaryIndex) {
-          await AsyncStorage.setItem(PRIMARY_TOKEN_INDEX_KEY, currentIndex.toString());
-          console.log(`[FebBox] Switched primary token to ${currentIndex + 1}`);
-        }
-
-        let best = allStreams.find(s => s.type === 'hls') || allStreams.find(s => s.type === 'mp4') || allStreams[0];
-
-        // Convert HLS URLs to master playlist by removing quality parameter
-        if (best.type === 'hls') {
-          try {
-            const url = new URL(best.url);
-            url.searchParams.delete('quality');
-            best = { ...best, url: url.toString(), quality: 'Master (Adaptive)' };
-            console.log('[FebBox] Converted to master playlist');
-          } catch (e) {
-            // If URL parsing fails, just use as-is
-            console.log('[FebBox] Could not parse URL for quality removal, using as-is');
-          }
-        }
-
-        console.log(`[FebBox] Stream ready: ${best.quality} (${best.type})`);
-
-        return {
-          success: true,
-          streamUrl: best.url,
-          streamType: best.type,
-          quality: best.quality,
-          size: best.size,
-          shareKey,
-          allStreams,
-        };
-
-      } catch (error) {
-        console.log(`[FebBox] Token ${currentIndex + 1} error:`, error instanceof Error ? error.message : 'Unknown');
-        
-        // Network/timeout errors suggest service is down
-        if (error instanceof Error && error.name === 'AbortError') {
-          console.log('[FebBox] Request timeout, trying Aether fallback');
-          shouldFallbackToAether = true;
-          break;
-        }
-        
-        continue;
-      }
-    }
-
-    // If service is down or all tokens failed, try Aether fallback
-    if (shouldFallbackToAether) {
-      console.log('[FebBox] Falling back to Aether API...');
-      return getFebBoxStreamFromAether(tmdbId, type, season, episode);
-    }
-
-    return { success: false, error: 'All tokens failed or exhausted' };
-
-  } catch (error) {
-    return { 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
-    };
-  }
-};
-
-// Helper function to extract FID from single file share HTML
-const extractFidFromHtml = async (
-  febboxShareKey: string,
-  headers: HeadersInit
-): Promise<string | null> => {
-  try {
-    const htmlUrl = `https://www.febbox.com/share/${febboxShareKey}`;
-    console.log('[FebBox Direct] Fetching HTML to extract FID:', htmlUrl);
-    
-    const response = await fetch(htmlUrl, { headers });
-    if (!response.ok) {
-      throw new Error(`HTML fetch failed: ${response.status}`);
-    }
-    
-    const html = await response.text();
-    
-    // Look for data-id attributes (file ID is exposed in multiple places)
-    // Prioritize the play_video class or details button
-    const patterns = [
-      /class="[^"]*play_video[^"]*"\s+data-id="(\d+)"/,
-      /class="details"\s+data-id="(\d+)"/,
-      /data-id="(\d+)"/
-    ];
-    
-    for (const pattern of patterns) {
-      const match = html.match(pattern);
-      if (match) {
-        const fid = match[1];
-        console.log('[FebBox Direct] Extracted FID from HTML:', fid);
-        return fid;
-      }
-    }
-    
-    console.log('[FebBox Direct] No FID found in HTML');
-    return null;
-  } catch (error) {
-    console.error('[FebBox Direct] Error extracting FID from HTML:', error);
-    return null;
-  }
-};
-
-export const getFebBoxStreamDirect = async (
-  febboxShareKey: string,
-  type: 'movie' | 'tv',
-  season?: number,
-  episode?: number
-): Promise<FebBoxStreamResult> => {
-  if (type === 'tv' && (season === undefined || episode === undefined)) {
-    return { success: false, error: 'Season and episode required for TV shows' };
-  }
-
-  try {
-    // Get stored tokens
-    const stored = await AsyncStorage.getItem(TOKENS_STORAGE_KEY);
-    if (!stored) {
-      return { success: false, error: 'No FebBox tokens configured' };
-    }
-
-    const tokens: string[] = JSON.parse(stored);
-    if (tokens.length === 0) {
-      return { success: false, error: 'No tokens available' };
-    }
-
-    const token = tokens[0];
-    const shareUrl = `https://www.febbox.com/share/${febboxShareKey}`;
-    const headers = await getFebBoxHeaders(token, shareUrl);
-
-    console.log('[FebBox Direct] Starting search:', { shareKey: febboxShareKey, type, season, episode });
-
-    // First, check if this is a single file or folder share
-    const rootResponse = await fetch(
-      `https://www.febbox.com/file/file_share_list?page=1&share_key=${febboxShareKey}&pwd=&parent_id=0&is_html=0`,
-      { headers }
-    );
-
-    if (!rootResponse.ok) {
-      throw new Error(`Root fetch failed: ${rootResponse.status}`);
-    }
-
-    const rootData: FebBoxSearchResponse = await rootResponse.json();
-    const fileList = rootData.data.file_list;
-
-    console.log('[FebBox Direct] Root items found:', fileList.length);
-
-    if (fileList.length === 0) {
-      console.log('[FebBox Direct] Empty file list - this is a single file share');
-      
-      // Extract FID from HTML
-      const fid = await extractFidFromHtml(febboxShareKey, headers);
-      
-      if (!fid) {
-        return { success: false, error: 'Could not extract file ID from single file share' };
-      }
-
-      // Get media URL directly
-      console.log('[FebBox Direct] Fetching media URL for single file, FID:', fid);
-
-      const mediaResponse = await fetch(
-        `https://www.febbox.com/console/video_quality_list?fid=${fid}`,
-        { headers }
-      );
-
-      if (!mediaResponse.ok) {
-        throw new Error(`Media URL fetch failed: ${mediaResponse.status}`);
-      }
-
-      const mediaData: FebBoxMediaResponse = await mediaResponse.json();
-      const qualityHtml = mediaData.html;
-
-      console.log('[FebBox Direct] HTML response length:', qualityHtml.length);
-
-      // Extract HLS URL
-      const hlsMatch = qualityHtml.match(/data-url="(https?:\/\/[^"]*(?:hls|\.m3u8)[^"]*)"/);
-      
-      if (hlsMatch) {
-        let hlsUrl = hlsMatch[1];
-        hlsUrl = hlsUrl.replace(/&quality=[^&]+/, '');
-
-        console.log('[FebBox Direct] HLS master playlist ready (single file)');
-
-        return {
-          success: true,
-          streamUrl: hlsUrl,
-          streamType: 'hls',
-          quality: 'Master (Adaptive)',
-          size: 'Unknown', // Single file shares don't expose size easily
-        };
-      }
-
-      // Fallback: Try ORG link
-      console.log('[FebBox Direct] No HLS found, trying ORG link...');
-      const orgMatch = qualityHtml.match(/data-url="([^"]+)"[^>]*data-quality="ORG"/);
-      
-      if (orgMatch) {
-        console.log('[FebBox Direct] ORG link found (single file)');
-        return {
-          success: true,
-          streamUrl: orgMatch[1],
-          streamType: 'mp4',
-          quality: 'Original',
-          size: 'Unknown',
-        };
-      }
-
-      return { success: false, error: 'No streamable URL available for single file' };
-    }
-
-    let targetFile: FebBoxFile | null = null;
-
-    if (type === 'tv' && season !== undefined) {
-      console.log('[FebBox Direct] Searching for season', season);
-      
-      let seasonFolder = null;
-      const maxPages = 3;
-
-      // Search through pages 1-3 for the season folder
-      for (let page = 1; page <= maxPages; page++) {
-        console.log(`[FebBox Direct] Checking page ${page} for season folder`);
-        
-        const pageResponse = await fetch(
-          `https://www.febbox.com/file/file_share_list?page=${page}&share_key=${febboxShareKey}&pwd=&parent_id=0&is_html=0`,
-          { headers }
-        );
-
-        if (!pageResponse.ok) {
-          throw new Error(`Page fetch failed: ${pageResponse.status}`);
-        }
-
-        const pageData: FebBoxSearchResponse = await pageResponse.json();
-        const pageFileList = pageData.data.file_list;
-
-        console.log(`[FebBox Direct] Page ${page} items found:`, pageFileList.length);
-
-        // Find season folder on this page
-        seasonFolder = pageFileList.find(item => {
-          if (item.is_dir !== 1) return false;
-          const regex = new RegExp(`season\\s*0*${season}\\b`, 'i');
-          return regex.test(item.file_name);
-        });
-
-        if (seasonFolder) {
-          console.log(`[FebBox Direct] Found season folder on page ${page}:`, seasonFolder.file_name);
-          break;
-        }
-      }
-
-      if (!seasonFolder) {
-        console.log('[FebBox Direct] Season folder not found after checking all pages');
-        return { success: false, error: `Season ${season} folder not found` };
-      }
-
-      // Fetch files from season folder
-      const seasonResponse = await fetch(
-        `https://www.febbox.com/file/file_share_list?share_key=${febboxShareKey}&pwd=&parent_id=${seasonFolder.fid}&is_html=0`,
-        { headers }
-      );
-
-      if (!seasonResponse.ok) {
-        throw new Error(`Season folder fetch failed: ${seasonResponse.status}`);
-      }
-
-      const seasonData: FebBoxSearchResponse = await seasonResponse.json();
-      const seasonFiles = seasonData.data.file_list.filter(f => f.is_dir !== 1);
-
-      console.log('[FebBox Direct] Files in season folder:', seasonFiles.length);
-
-      // Filter by episode
-      const episodeFiles = seasonFiles.filter(f => {
-        const match = f.file_name.match(/[Ss]\d+[Ee](\d+)/);
-        if (!match) return false;
-        const fileEpisode = parseInt(match[1], 10);
-        return fileEpisode === episode;
-      });
-
-      console.log('[FebBox Direct] Matching episode files:', episodeFiles.length);
-
-      if (episodeFiles.length === 0) {
-        return { success: false, error: `Episode ${episode} not found in season ${season}` };
-      }
-
-      // Pick largest file
-      targetFile = episodeFiles.reduce((largest, current) => 
-        current.file_size_bytes > largest.file_size_bytes ? current : largest
-      );
-
-      console.log('[FebBox Direct] Selected file (largest):', targetFile.file_name, targetFile.file_size);
-
-    } else {
-      console.log('[FebBox Direct] Handling movie from folder');
-
-      const videoFiles = fileList.filter(f => f.is_dir !== 1);
-      
-      if (videoFiles.length === 0) {
-        return { success: false, error: 'No video files found' };
-      }
-
-      console.log('[FebBox Direct] Video files found:', videoFiles.length);
-
-      // Prefer largest file
-      targetFile = videoFiles.reduce((largest, current) => 
-        current.file_size_bytes > largest.file_size_bytes ? current : largest
-      );
-
-      console.log('[FebBox Direct] Selected file (largest):', targetFile.file_name, targetFile.file_size);
-    }
-
-    if (!targetFile) {
-      return { success: false, error: 'No suitable file found' };
-    }
-
-    // Get media URL
-    console.log('[FebBox Direct] Fetching media URL for FID:', targetFile.fid);
-
-    const mediaResponse = await fetch(
-      `https://www.febbox.com/console/video_quality_list?fid=${targetFile.fid}`,
-      { headers }
-    );
-
-    if (!mediaResponse.ok) {
-      throw new Error(`Media URL fetch failed: ${mediaResponse.status}`);
-    }
-
-    const mediaData: FebBoxMediaResponse = await mediaResponse.json();
-    const qualityHtml = mediaData.html;
-
-    console.log('[FebBox Direct] HTML response length:', qualityHtml.length);
-
-    // Extract HLS URL
-    const hlsMatch = qualityHtml.match(/data-url="(https?:\/\/[^"]*(?:hls|\.m3u8)[^"]*)"/);
-    
-    if (hlsMatch) {
-      let hlsUrl = hlsMatch[1];
-      hlsUrl = hlsUrl.replace(/&quality=[^&]+/, '');
-
-      console.log('[FebBox Direct] HLS master playlist ready');
-
-      return {
-        success: true,
-        streamUrl: hlsUrl,
-        streamType: 'hls',
-        quality: 'Master (Adaptive)',
-        size: targetFile.file_size,
-      };
-    }
-
-    // Fallback: Try ORG link
-    console.log('[FebBox Direct] No HLS found, trying ORG link...');
-    const orgMatch = qualityHtml.match(/data-url="([^"]+)"[^>]*data-quality="ORG"/);
-    
-    if (orgMatch) {
-      console.log('[FebBox Direct] ORG link found');
-      return {
-        success: true,
-        streamUrl: orgMatch[1],
-        streamType: 'mp4',
-        quality: 'Original',
-        size: targetFile.file_size,
-      };
-    }
-
-    console.log('[FebBox Direct] No HLS or ORG stream found in HTML');
-    return { success: false, error: 'No streamable URL available' };
-
-  } catch (error) {
-    console.error('[FebBox Direct] Error:', error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    };
-  }
 };
