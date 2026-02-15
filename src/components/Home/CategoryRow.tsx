@@ -1,11 +1,14 @@
 import React from 'react';
 import { View, Text, ScrollView, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+
 import { Category, RootStackParamList } from '../../types';
+import { COLORS, SPACING, FONT_SIZES, SHADOWS } from '../../constants';
+
 import { PosterCard } from './PosterCard';
 import { SkeletonCard } from './SkeletonCard';
-import { COLORS, SPACING, FONT_SIZES, SHADOWS } from '../../constants';
+
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 interface Props {
   category: Category;

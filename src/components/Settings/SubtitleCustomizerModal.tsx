@@ -10,6 +10,7 @@ import {
 import Slider from '@react-native-community/slider';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+
 import { COLORS, SPACING } from '../../constants';
 import { SubtitleStyling } from '../../hooks/Shared/useSubtitleStyling';
 

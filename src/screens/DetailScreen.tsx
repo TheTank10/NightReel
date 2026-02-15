@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { View, ScrollView, StyleSheet, ActivityIndicator, Text, TouchableOpacity, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
 import { COLORS, SPACING } from '../constants';
-import { DetailScreenProps, TVDetails } from '../types';
+import { ContinueWatchingItem, DetailScreenProps, Movie, TVDetails } from '../types';
 import { 
   useContentDetails, 
   useSeasonData, 
@@ -56,7 +57,7 @@ export const DetailScreen: React.FC<DetailScreenProps> = ({ route, navigation })
 
   // Continue watching
   const { getProgress } = useContinueWatching();
-  const [continueWatchingData, setContinueWatchingData] = useState<any>(null);
+  const [continueWatchingData, setContinueWatchingData] = useState<ContinueWatchingItem | null>(null);
 
   // Load season data for TV shows
   const {
@@ -112,7 +113,7 @@ export const DetailScreen: React.FC<DetailScreenProps> = ({ route, navigation })
     };
 
     loadContinueWatching();
-  }, [item.id]);
+  }, [item.id, getProgress, isTVShow, setSelectedSeason]);
 
   /**
    * Get resume timestamp for current episode/movie
@@ -149,7 +150,7 @@ export const DetailScreen: React.FC<DetailScreenProps> = ({ route, navigation })
   /**
    * Handle navigation to another detail screen
    */
-  const handleSimilarItemPress = (similar: any) => {
+  const handleSimilarItemPress = (similar: Movie) => {
     navigation.push('Detail', { item: similar });
   };
 

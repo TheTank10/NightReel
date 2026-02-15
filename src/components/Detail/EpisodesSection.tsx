@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
+
 import { SPACING, COLORS, FONT_SIZES, BORDER_RADIUS } from '../../constants';
 import { TMDB_IMAGE_BASE_URL } from '../../constants/config';
 import { Episode } from '../../types';

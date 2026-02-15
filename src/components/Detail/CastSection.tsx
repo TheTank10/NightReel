@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, Image, FlatList, StyleSheet } from 'react-native';
+
 import { SPACING, COLORS, FONT_SIZES } from '../../constants';
 import { TMDB_IMAGE_BASE_URL } from '../../constants/config';
 import { CastMember } from '../../types';

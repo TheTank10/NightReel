@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import CryptoJS from 'crypto-js';
+
 import { getImdbId } from './tmdb';
 
 const TOKENS_STORAGE_KEY = '@febbox_tokens';
@@ -71,6 +72,10 @@ interface ShowBoxSearchResult {
   title: string;
   year?: number;
   imdb_rating?: string;
+}
+
+interface ShowBoxSearchResponse {
+  data: ShowBoxSearchResult[];
 }
 
 /**
@@ -192,7 +197,7 @@ class ShowBoxAPI {
   /**
    * Make encrypted API request
    */
-  async request(module: string, params: Record<string, any> = {}): Promise<any> {
+  async request(module: string, params: Record<string, unknown> = {}): Promise<unknown> {
     const requestData = {
       childmode: '0',
       app_version: '11.5',
@@ -248,7 +253,7 @@ class ShowBoxAPI {
         type,
         keyword,
         pagelimit: 20,
-      });
+      }) as ShowBoxSearchResponse;
       
       return result?.data || [];
     } catch (error) {
@@ -788,7 +793,7 @@ const getFebBoxStreamViaNuvio = async (
             const url = new URL(best.url);
             url.searchParams.delete('quality');
             best = { ...best, url: url.toString(), quality: 'Master (Adaptive)' };
-          } catch (e) {
+          } catch {
             // Use as-is
           }
         }

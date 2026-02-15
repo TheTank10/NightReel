@@ -1,8 +1,10 @@
 import { useState } from 'react';
+
 import { searchContent } from '../../services/tmdb';
 import { SEARCH_DEBOUNCE_DELAY } from '../../constants/config';
-import { useDebounce } from './useDebounce';
 import { Movie } from '../../types';
+
+import { useDebounce } from './useDebounce';
 
 /**
  * Hook for managing search state and debounced search

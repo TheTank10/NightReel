@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+
 import { fetchSeasonDetails } from '../../services/tmdb';
 import { SeasonDetails } from '../../types';
 
@@ -24,7 +25,7 @@ export const useSeasonData = (
   const [loadingSeason, setLoadingSeason] = useState(false);
   const [showSeasonPicker, setShowSeasonPicker] = useState(false);
 
-  const loadSeasonData = async (seasonNumber: number) => {
+  const loadSeasonData = useCallback(async (seasonNumber: number) => {
     try {
       setLoadingSeason(true);
       const data = await fetchSeasonDetails(showId, seasonNumber);
@@ -34,13 +35,13 @@ export const useSeasonData = (
     } finally {
       setLoadingSeason(false);
     }
-  };
+  }, [showId]);
 
   useEffect(() => {
     if (hasDetails && isTVShow) {
       loadSeasonData(selectedSeason);
     }
-  }, [selectedSeason, hasDetails, isTVShow]);
+  }, [selectedSeason, hasDetails, isTVShow, loadSeasonData]);
 
   return {
     selectedSeason,

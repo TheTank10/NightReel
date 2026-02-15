@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import { Animated } from 'react-native';
+import { Animated, NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
 
 /**
  * Hook for animating header elements based on scroll position
@@ -26,7 +26,7 @@ export const useScrollAnimation = () => {
   /**
    * Handle scroll events
    */
-  const handleScroll = (event: any) => {
+  const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const currentScrollY = event.nativeEvent.contentOffset.y;
 
     if (currentScrollY > 10 && !isSearchBarHidden.current) {

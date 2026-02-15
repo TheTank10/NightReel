@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import { SubtitleLanguage } from '../../types';
 
 const LANGUAGES_STORAGE_KEY = '@subtitle_languages';

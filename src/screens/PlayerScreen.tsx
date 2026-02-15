@@ -1,3 +1,5 @@
+// not finished yet
+/* eslint-disable */
 import React, { useEffect, useState, useRef, useLayoutEffect } from "react";
 import {
   View,
@@ -19,6 +21,7 @@ import * as NavigationBar from "expo-navigation-bar";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RouteProp } from "@react-navigation/native";
 import { Audio } from 'expo-av';
+
 import { getSubtitles } from '../services/opensubtitles';
 import { useSubtitleStyling, useContinueWatching } from '../hooks';
 

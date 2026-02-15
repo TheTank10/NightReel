@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import { SubtitleLanguage } from '../../types';
 
 const LANGUAGES_STORAGE_KEY = '@subtitle_languages';
@@ -7,16 +8,6 @@ const LANGUAGES_STORAGE_KEY = '@subtitle_languages';
 export const useSubtitleLanguages = () => {
   const [languages, setLanguages] = useState<SubtitleLanguage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    loadLanguages();
-  }, []);
-
-  useEffect(() => {
-    if (!isLoading) {
-      saveLanguages();
-    }
-  }, [languages, isLoading]);
 
   const loadLanguages = async () => {
     try {
@@ -32,13 +23,13 @@ export const useSubtitleLanguages = () => {
     }
   };
 
-  const saveLanguages = async () => {
+  const saveLanguages = useCallback(async () => {
     try {
       await AsyncStorage.setItem(LANGUAGES_STORAGE_KEY, JSON.stringify(languages));
     } catch (error) {
       console.error('Error saving languages:', error);
     }
-  };
+  }, [languages]);
 
   const addLanguage = (language: SubtitleLanguage) => {
     // Check if language already exists
@@ -50,6 +41,16 @@ export const useSubtitleLanguages = () => {
   const removeLanguage = (code: string) => {
     setLanguages(languages.filter(l => l.code !== code));
   };
+
+  useEffect(() => {
+    loadLanguages();
+  }, []);
+
+  useEffect(() => {
+    if (!isLoading) {
+      saveLanguages();
+    }
+  }, [languages, isLoading, saveLanguages]);
 
   return {
     languages,

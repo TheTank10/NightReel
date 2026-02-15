@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView } from 'react-native';
+
 import { COLORS, SPACING } from '../../constants';
 import { AVAILABLE_LANGUAGES } from '../../constants';
 import { SubtitleLanguage } from '../../types';

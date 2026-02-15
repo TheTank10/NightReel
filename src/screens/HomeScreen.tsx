@@ -1,15 +1,18 @@
 import React, { useState, useRef } from 'react';
-import { View, ScrollView, Text, StyleSheet } from 'react-native';
+import { View, ScrollView, Text, StyleSheet, NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useNavigation } from '@react-navigation/native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import { MediaType, RootStackParamList } from '../types';
 import { useContentLoader, useSearch, useScrollAnimation } from '../hooks';
 import { Header, HeroSection, CategoryRow, PosterCard, ScrollToTopButton  } from '../components';
 import { COLORS, SPACING } from '../constants';
-import { useNavigation } from '@react-navigation/native';
+
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -42,7 +45,7 @@ export const HomeScreen: React.FC = () => {
           reload();
         }
       });
-    }, [])
+    }, [reload])
   );
 
   /**
@@ -62,7 +65,7 @@ export const HomeScreen: React.FC = () => {
     resetAnimations();
   };
 
-  const handleScrollEvent = (event: any) => {
+  const handleScrollEvent = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const currentScrollY = event.nativeEvent.contentOffset.y;
     setShowScrollTop(currentScrollY > 300);
     handleScroll(event);

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+
 import { SPACING, COLORS, FONT_SIZES } from '../../constants';
 
 interface DetailShareLinkSectionProps {
@@ -26,9 +27,6 @@ const extractShareKey = (input: string): string => {
 export const DetailShareLinkSection: React.FC<DetailShareLinkSectionProps> = ({
   onSubmit,
   onClear,
-  mediaType,
-  season,
-  episode,
   existingShareKey,
 }) => {
   const [shareKey, setShareKey] = useState(existingShareKey || '');
@@ -52,7 +50,7 @@ export const DetailShareLinkSection: React.FC<DetailShareLinkSectionProps> = ({
       await onSubmit(extractedKey);
       setIsSaved(true);
     } catch (error) {
-      Alert.alert('Error', 'Failed to save share link');
+      Alert.alert('Error', 'Failed to save share link error: ' + error);
     } finally {
       setLoading(false);
     }

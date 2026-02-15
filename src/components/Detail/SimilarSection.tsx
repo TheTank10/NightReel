@@ -1,12 +1,14 @@
 import React from 'react';
 import { View, Text, Image, TouchableOpacity, FlatList, StyleSheet } from 'react-native';
+
 import { SPACING, COLORS, FONT_SIZES, BORDER_RADIUS } from '../../constants';
 import { TMDB_IMAGE_BASE_URL } from '../../constants/config';
+import { Movie } from '../../types';
 
 interface DetailSimilarSectionProps {
-  similarContent: any[];
+  similarContent: Movie[];
   mediaType: string;
-  onItemPress: (item: any) => void;
+  onItemPress: (item: Movie) => void;
 }
 
 /**
@@ -19,7 +21,7 @@ export const DetailSimilarSection: React.FC<DetailSimilarSectionProps> = ({
 }) => {
   if (similarContent.length === 0) return null;
 
-  const renderSimilarItem = ({ item: similar }: { item: any }) => (
+  const renderSimilarItem = ({ item: similar }: { item: Movie }) => (
     <TouchableOpacity style={styles.similarCard} onPress={() => onItemPress(similar)}>
       {similar.poster_path && (
         <Image

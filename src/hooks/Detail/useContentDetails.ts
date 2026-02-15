@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+
 import { fetchContentDetails } from '../../services/tmdb';
 import { ContentDetails } from '../../types';
 
@@ -20,7 +21,7 @@ export const useContentDetails = (
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
-  const loadDetails = async () => {
+  const loadDetails = useCallback(async () => {
     try {
       setLoading(true);
       setError(false);
@@ -32,11 +33,11 @@ export const useContentDetails = (
     } finally {
       setLoading(false);
     }
-  };
+  }, [itemId, mediaType]);
 
   useEffect(() => {
     loadDetails();
-  }, [itemId, mediaType]);
+  }, [itemId, mediaType, loadDetails]);
 
   return { details, loading, error, loadDetails };
 };

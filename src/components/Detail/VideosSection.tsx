@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, Image, TouchableOpacity, FlatList, StyleSheet, Linking } from 'react-native';
+
 import { SPACING, COLORS, FONT_SIZES, BORDER_RADIUS } from '../../constants';
 import { Video } from '../../types';
 

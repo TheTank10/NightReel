@@ -17,11 +17,11 @@ export { useShareKey } from './Detail/useShareKey';
 export { useStreamFetcher } from './Detail/useStreamFetcher';
 
 // Settings Screen Hooks
-export * from './Settings/useFebboxTokens';
-export * from './Settings/useSubtitleLanguages';
-export * from './Settings/useFebboxServer';
+export { useFebBoxTokens } from './Settings/useFebboxTokens';
+export { useSubtitleLanguages } from './Settings/useSubtitleLanguages';
+export { useFebBoxServer } from './Settings/useFebboxServer';
 export { useFebBox4K } from './Settings/useFebbox4K';
 
 // Shared Hooks 
-export * from './Shared/useSubtitleStyling';
+export { useSubtitleStyling } from './Shared/useSubtitleStyling';
 export { useContinueWatching } from './Shared/useContinueWatching';

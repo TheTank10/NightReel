@@ -1,7 +1,6 @@
 import React from 'react';
 import { TouchableOpacity, Animated, StyleSheet, Text } from 'react-native';
 import { BlurView } from 'expo-blur';
-import { COLORS, SPACING } from '../../constants';
 
 interface Props {
   visible: boolean;
@@ -17,7 +16,7 @@ export const ScrollToTopButton: React.FC<Props> = ({ visible, onPress }) => {
       duration: 200,
       useNativeDriver: true,
     }).start();
-  }, [visible]);
+  }, [visible, opacity]);
 
   return (
     <Animated.View style={[styles.container, { opacity }]}>

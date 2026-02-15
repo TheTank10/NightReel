@@ -1,10 +1,12 @@
 import React from 'react';
 import { View, Text, Animated, StyleSheet } from 'react-native';
 import { BlurView } from 'expo-blur';
+
 import { MediaType } from '../../types';
+import { COLORS, SPACING } from '../../constants';
+
 import { TabBar } from './TabBar';
 import { SearchBar } from './SearchBar';
-import { COLORS, SPACING, FONT_SIZES } from '../../constants';
 
 interface Props {
   selectedTab: MediaType;

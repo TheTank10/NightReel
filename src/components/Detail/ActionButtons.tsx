@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, TouchableOpacity, Text, StyleSheet, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import { SPACING, COLORS, FONT_SIZES, BORDER_RADIUS } from '../../constants';
 import { useContinueWatching } from '../../hooks';
+import { ContinueWatchingItem } from '../../types';
 
 interface DetailActionButtonsProps {
   onPlay: () => void;
@@ -18,21 +20,14 @@ const MY_LIST_KEY = '@limetv_my_list';
 export const DetailActionButtons: React.FC<DetailActionButtonsProps> = ({ 
   onPlay, 
   itemId,
-  title 
 }) => {
   const [isInList, setIsInList] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [continueWatchingData, setContinueWatchingData] = useState<any>(null);
+  const [continueWatchingData, setContinueWatchingData] = useState<ContinueWatchingItem | null>(null);
   
   const { getProgress } = useContinueWatching();
 
-  // Check if item is in list and has continue watching progress on mount
-  useEffect(() => {
-    checkIfInList();
-    checkContinueWatching();
-  }, [itemId]);
-
-  const checkIfInList = async () => {
+  const checkIfInList = useCallback(async () => {
     try {
       const myListJson = await AsyncStorage.getItem(MY_LIST_KEY);
       if (myListJson) {
@@ -42,16 +37,21 @@ export const DetailActionButtons: React.FC<DetailActionButtonsProps> = ({
     } catch (error) {
       console.error('Error checking list:', error);
     }
-  };
+  }, [itemId]);
 
-  const checkContinueWatching = async () => {
+  const checkContinueWatching = useCallback(async () => {
     try {
       const progress = await getProgress(itemId);
       setContinueWatchingData(progress);
     } catch (error) {
       console.error('Error checking continue watching:', error);
     }
-  };
+  }, [itemId, getProgress]);
+
+  useEffect(() => {
+    checkIfInList();
+    checkContinueWatching();
+  }, [itemId, checkIfInList, checkContinueWatching]);
 
   const handleMyListToggle = async () => {
     try {

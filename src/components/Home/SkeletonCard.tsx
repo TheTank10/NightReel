@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Animated, StyleSheet } from 'react-native';
+
 import { COLORS, BORDER_RADIUS } from '../../constants';
 
 /**
@@ -24,7 +25,7 @@ export const SkeletonCard: React.FC = () => {
         }),
       ])
     ).start();
-  }, []);
+  }, [opacity]);
 
   return (
     <View style={styles.card}>

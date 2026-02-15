@@ -2,18 +2,13 @@ import { useEffect, useRef } from 'react';
 
 /**
  * Debounce hook - delays execution until user stops typing
- * 
- * Usage:
- *   const debouncedSearch = useDebounce((query) => searchContent(query), 500);
- *   debouncedSearch('avatar');
  */
-export const useDebounce = <T extends (...args: any[]) => void>(
-  callback: T,
+export const useDebounce = <Args extends unknown[]>(
+  callback: (...args: Args) => void | Promise<void>,
   delay: number
 ) => {
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (timeoutRef.current) {
@@ -22,20 +17,16 @@ export const useDebounce = <T extends (...args: any[]) => void>(
     };
   }, []);
 
-  // Return debounced function
-  const debouncedCallback = (...args: Parameters<T>) => {
-    // Clear existing timeout
+  const debouncedCallback = (...args: Args) => {
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
     }
 
-    // Set new timeout
     timeoutRef.current = setTimeout(() => {
       callback(...args);
     }, delay);
   };
 
-  // Also expose a cancel method
   debouncedCallback.cancel = () => {
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);

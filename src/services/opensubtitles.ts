@@ -1,5 +1,6 @@
 import axios from 'axios';
 import pako from 'pako';
+
 import { getImdbId } from './tmdb';
 
 const OPENSUBTITLES_API_URL = 'https://rest.opensubtitles.org';

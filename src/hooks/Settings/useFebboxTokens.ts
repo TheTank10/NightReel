@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import { validateFebBoxToken } from '../../services/febbox';
 import { TokenState } from '../../types';
 
@@ -8,16 +9,6 @@ const TOKENS_STORAGE_KEY = '@febbox_tokens';
 export const useFebBoxTokens = () => {
   const [tokens, setTokens] = useState<TokenState[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    loadTokens();
-  }, []);
-
-  useEffect(() => {
-    if (!isLoading) {
-      saveTokens();
-    }
-  }, [tokens, isLoading]);
 
   const loadTokens = async () => {
     try {
@@ -59,7 +50,7 @@ export const useFebBoxTokens = () => {
     }
   };
 
-  const saveTokens = async () => {
+  const saveTokens = useCallback(async () => {
     try {
       const nonEmptyTokens = tokens
         .filter(token => token.value.trim() !== '')
@@ -68,7 +59,7 @@ export const useFebBoxTokens = () => {
     } catch (error) {
       console.error('Error saving tokens:', error);
     }
-  };
+  }, [tokens]);
 
   const addToken = () => {
     setTokens([...tokens, { value: '', status: 'idle' }]);
@@ -99,6 +90,16 @@ export const useFebBoxTokens = () => {
   const removeToken = (index: number) => {
     setTokens(tokens.filter((_, i) => i !== index));
   };
+
+  useEffect(() => {
+    loadTokens();
+  }, []);
+
+  useEffect(() => {
+    if (!isLoading) {
+      saveTokens();
+    }
+  }, [tokens, isLoading, saveTokens]);
 
   return {
     tokens,

@@ -1,9 +1,11 @@
 import React from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { COLORS, SPACING } from '../../constants';
 import { LinearGradient } from 'expo-linear-gradient';
+
+import { COLORS, SPACING } from '../../constants';
 import { Server } from '../../hooks/Settings/useFebboxServer';
+
 import { SettingsFebboxServerItem } from './FebboxServerItem';
 
 interface SettingsFebboxServerPickerProps {

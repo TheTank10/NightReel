@@ -2,6 +2,7 @@ import React from 'react';
 import { View, TextInput, TouchableOpacity, Animated, StyleSheet } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
+
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants';
 
 interface Props {
@@ -21,7 +22,6 @@ export const SearchBar: React.FC<Props> = ({
   onChangeText,
   onClear,
   scale,
-  translateY,
 }) => {
   const animatedStyle = {
     transform: [

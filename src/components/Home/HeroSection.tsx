@@ -2,12 +2,15 @@ import React from 'react';
 import { View, Image, Text, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
+import { useNavigation } from '@react-navigation/native';
+
 import { Movie } from '../../types';
 import { getBackdropUrl, getDisplayTitle } from '../../utils';
-import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS, SHADOWS } from '../../constants';
-import { useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { SPACING, BORDER_RADIUS, SHADOWS } from '../../constants';
 import { RootStackParamList } from '../../types';
+
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 

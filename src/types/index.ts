@@ -1,4 +1,5 @@
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+
 import { TokenValidationResult } from '../services/febbox';
 
 // Movie and TV show data structures
@@ -176,6 +177,20 @@ export interface TVDetails {
   }[];
 }
 
+// Raw TMDB API response (before filtering)
+export interface TMDBRawItem {
+  id: number;
+  title?: string;
+  name?: string;
+  poster_path?: string | null;
+  backdrop_path?: string | null;
+  vote_average?: number;
+  overview?: string;
+  media_type?: 'movie' | 'tv' | 'person';
+  release_date?: string;
+  first_air_date?: string;
+}
+
 // Complete detail response
 export interface ContentDetails {
   details: MovieDetails | TVDetails;
@@ -187,11 +202,21 @@ export interface ContentDetails {
     results: Video[];
   };
   similar: {
-    results: any[];
+    results: Movie[];
   };
   recommendations: {
-    results: any[];
+    results: Movie[];
   };
+}
+
+export interface ContinueWatchingItem {
+  tmdbId: number;
+  mediaType: 'movie' | 'tv';
+  timestamp: number;           // current playback position in seconds
+  duration: number;            // total length in seconds
+  season?: number;             // for TV shows
+  episode?: number;            // for TV shows
+  lastWatched: number;         // Date.now() timestamp
 }
 
 // SETTINGS

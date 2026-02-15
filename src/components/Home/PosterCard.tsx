@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Image, Text, TouchableOpacity, Animated, StyleSheet } from 'react-native';
+
 import { Movie } from '../../types';
 import { getPosterUrl } from '../../utils';
 import { COLORS, BORDER_RADIUS } from '../../constants';
@@ -34,7 +35,7 @@ export const PosterCard: React.FC<Props> = ({ item, onPress }) => {
         ])
       ).start();
     }
-  }, [imageLoaded]);
+  }, [imageLoaded, pulseAnim]);
 
   return (
     <TouchableOpacity style={styles.card} onPress={onPress}>

@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+
 import { fetchContent, fetchLazyCategories } from '../../services/tmdb';
 import { Movie, Category, MediaType } from '../../types';
 
@@ -7,11 +8,7 @@ export const useContentLoader = (mediaType: MediaType) => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [heroLoading, setHeroLoading] = useState(true);
 
-  useEffect(() => {
-    loadContent();
-  }, [mediaType]);
-
-  const loadContent = async () => {
+  const loadContent = useCallback(async () => {
     setHeroLoading(true);
     setHeroItem(null);
     setCategories([]);
@@ -39,7 +36,11 @@ export const useContentLoader = (mediaType: MediaType) => {
       console.error('Failed to load content:', error);
       setHeroLoading(false);
     }
-  };
+  }, [mediaType]);
+
+  useEffect(() => {
+    loadContent();
+  }, [mediaType, loadContent]);
 
   return {
     heroItem,

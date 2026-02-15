@@ -1,18 +1,12 @@
+// Shared by: Tmdb, Detail, Player
+
 import { useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { ContinueWatchingItem} from '../../types';
+
 const CONTINUE_WATCHING_KEY = '@continue_watching';
 const MAX_ITEMS = 10;
-
-export interface ContinueWatchingItem {
-  tmdbId: number;
-  mediaType: 'movie' | 'tv';
-  timestamp: number;           // current playback position in seconds
-  duration: number;            // total length in seconds
-  season?: number;             // for TV shows
-  episode?: number;            // for TV shows
-  lastWatched: number;         // Date.now() timestamp
-}
 
 interface SaveProgressParams {
   tmdbId: number;

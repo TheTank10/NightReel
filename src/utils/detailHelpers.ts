@@ -1,4 +1,4 @@
-import { ContentDetails, Video } from '../types';
+import { ContentDetails, Movie, Video } from '../types';
 
 /**
  * Extract year from release date or first air date
@@ -52,11 +52,11 @@ export const getTrailers = (details: ContentDetails | null): Video[] => {
     (v) => v.site === 'YouTube' && (v.type === 'Trailer' || v.type === 'Teaser')
   );
 };
-
+  
 /**
  * Combine and filter similar content and recommendations
  */
-export const getSimilarContent = (details: ContentDetails | null): any[] => {
+export const getSimilarContent = (details: ContentDetails | null): Movie[] => {
   if (!details) return [];
   const combined = [
     ...(details.similar?.results || []),

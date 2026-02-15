@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, Image, ImageBackground, StyleSheet, Dimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+
 import { SPACING, COLORS, FONT_SIZES, BORDER_RADIUS } from '../../constants';
 import { TMDB_BACKDROP_HIGH_URL, TMDB_POSTER_HIGH_URL } from '../../constants/config';
 

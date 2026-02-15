@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+
 import { SPACING, COLORS, FONT_SIZES } from '../../constants';
 
 interface DetailOverviewSectionProps {

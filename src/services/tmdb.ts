@@ -1,9 +1,10 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import { TMDB_BASE_URL, ITEMS_PER_CATEGORY, TMDB_API_KEY } from '../constants/config';
 import { getEndpoints } from '../constants/endpoints';
-import { Movie, Category, MediaType } from '../types';
-import { ContentDetails, MovieDetails, TVDetails, SeasonDetails } from '../types';
+import { Movie, Category, MediaType, TMDBRawItem } from '../types';
+import { ContentDetails, SeasonDetails } from '../types';
 
 const MY_LIST_KEY = '@limetv_my_list';
 const CONTINUE_WATCHING_KEY = '@continue_watching';
@@ -18,32 +19,57 @@ const tmdbClient = axios.create({
 });
 
 // Helper to filter out invalid items (no poster, no backdrop, people, etc.)
-const filterValidItems = (items: any[]): Movie[] => {
+const filterValidItems = (items: TMDBRawItem[]): Movie[] => {
   return items
-    .filter((item: any) =>
+    .filter((item) =>
       item.poster_path &&
       item.backdrop_path &&
       (item.media_type === 'movie' || item.media_type === 'tv' || item.title || item.name)
     )
+    .map((item) => ({
+      id: item.id,
+      title: item.title,
+      name: item.name,
+      poster_path: item.poster_path!,
+      backdrop_path: item.backdrop_path!,
+      vote_average: item.vote_average || 0,
+      overview: item.overview || '',
+      media_type: item.media_type as 'movie' | 'tv',
+    }))
     .slice(0, ITEMS_PER_CATEGORY);
 };
 
 // Helper to find best hero item (good backdrop + high rating)
-const findBestHeroItem = (items: any[]): Movie | null => {
+const findBestHeroItem = (items: TMDBRawItem[]): Movie | null => {
   // First try: find high-rated item with good images
-  const validHero = items.find((item: any) =>
+  const validHero = items.find((item) =>
     item.backdrop_path &&
     item.poster_path &&
-    item.vote_average > 6 &&
+    (item.vote_average || 0) > 6 &&
     (item.media_type === 'movie' || item.media_type === 'tv' || item.title || item.name)
   );
 
   // Fallback: any item with backdrop
-  const fallbackHero = items.find((item: any) =>
+  const fallbackHero = items.find((item) =>
     item.backdrop_path && item.poster_path
   );
 
-  return validHero || fallbackHero || items[0] || null;
+  const selected = validHero || fallbackHero || items[0];
+  
+  if (!selected || !selected.backdrop_path || !selected.poster_path) {
+    return null;
+  }
+
+  return {
+    id: selected.id,
+    title: selected.title,
+    name: selected.name,
+    poster_path: selected.poster_path,
+    backdrop_path: selected.backdrop_path,
+    vote_average: selected.vote_average || 0,
+    overview: selected.overview || '',
+    media_type: selected.media_type as 'movie' | 'tv',
+  };
 };
 
 /**
@@ -63,7 +89,7 @@ const fetchMyList = async (): Promise<Movie[]> => {
         // Try movie first
         const movieRes = await tmdbClient.get(`/movie/${id}`);
         if (movieRes.data) {
-          return { ...movieRes.data, media_type: 'movie' };
+          return { ...movieRes.data, media_type: 'movie' as const };
         }
       } catch {
         // If movie fails, try TV
@@ -73,7 +99,7 @@ const fetchMyList = async (): Promise<Movie[]> => {
             return { 
               ...tvRes.data, 
               title: tvRes.data.name,
-              media_type: 'tv' 
+              media_type: 'tv' as const
             };
           }
         } catch {
@@ -91,6 +117,16 @@ const fetchMyList = async (): Promise<Movie[]> => {
   }
 };
 
+interface ContinueWatchingStoredItem {
+  tmdbId: number;
+  mediaType: 'movie' | 'tv';
+  timestamp: number;
+  duration: number;
+  season?: number;
+  episode?: number;
+  lastWatched: number;
+}
+
 /**
  * Fetch Continue Watching items from AsyncStorage
  * Returns Movie[] with progress metadata attached
@@ -100,15 +136,7 @@ export const fetchContinueWatching = async (): Promise<Movie[]> => {
     const continueWatchingJson = await AsyncStorage.getItem(CONTINUE_WATCHING_KEY);
     if (!continueWatchingJson) return [];
     
-    const savedItems: Array<{
-      tmdbId: number;
-      mediaType: 'movie' | 'tv';
-      timestamp: number;
-      duration: number;
-      season?: number;
-      episode?: number;
-      lastWatched: number;
-    }> = JSON.parse(continueWatchingJson);
+    const savedItems: ContinueWatchingStoredItem[] = JSON.parse(continueWatchingJson);
     
     if (savedItems.length === 0) return [];
     
@@ -151,6 +179,10 @@ export const fetchContinueWatching = async (): Promise<Movie[]> => {
   }
 };
 
+interface TMDBResponse {
+  results: TMDBRawItem[];
+}
+
 /**
  * Fetch all content for a given media type (all, movie, tv)
  * Returns hero item and categories in parallel for best performance
@@ -160,11 +192,11 @@ export const fetchContent = async (type: MediaType) => {
 
   try {
     const [heroResponse, myListItems, continueWatchingItems, ...categoryResponses] = await Promise.all([
-      tmdbClient.get(config.hero),
+      tmdbClient.get<TMDBResponse>(config.hero),
       fetchMyList(),
       fetchContinueWatching(),
-      ...config.priority.map(async (endpoint, index) => {
-        const response = await tmdbClient.get(endpoint.url);
+      ...config.priority.map(async (endpoint) => {
+        const response = await tmdbClient.get<TMDBResponse>(endpoint.url);
         return response;
       }),
     ]);
@@ -236,8 +268,8 @@ export const fetchLazyCategories = async (type: MediaType): Promise<Category[]> 
 
   try {
     const responses = await Promise.all(
-      config.lazy.map(async (endpoint, index) => {
-        const response = await tmdbClient.get(endpoint.url);
+      config.lazy.map(async (endpoint) => {
+        const response = await tmdbClient.get<TMDBResponse>(endpoint.url);
         return response;
       })
     );
@@ -264,16 +296,16 @@ export const searchContent = async (query: string): Promise<Movie[]> => {
   }
 
   try {
-    const response = await tmdbClient.get('/search/multi', {
+    const response = await tmdbClient.get<TMDBResponse>('/search/multi', {
       params: { query: encodeURIComponent(query) },
     });
 
     // Filter to only movies and TV shows
     const filtered = response.data.results.filter(
-      (item: any) => item.media_type === 'movie' || item.media_type === 'tv'
+      (item) => item.media_type === 'movie' || item.media_type === 'tv'
     );
 
-    return filtered;
+    return filterValidItems(filtered);
   } catch (error: unknown) {
     console.error('SEARCH ERROR:');
 
@@ -303,16 +335,20 @@ export const fetchContentDetails = async (
       tmdbClient.get(baseUrl),
       tmdbClient.get(`${baseUrl}/credits`),
       tmdbClient.get(`${baseUrl}/videos`),
-      tmdbClient.get(`${baseUrl}/similar`),
-      tmdbClient.get(`${baseUrl}/recommendations`),
+      tmdbClient.get<TMDBResponse>(`${baseUrl}/similar`),
+      tmdbClient.get<TMDBResponse>(`${baseUrl}/recommendations`),
     ]);
 
     return {
       details: detailsRes.data,
       credits: creditsRes.data,
       videos: videosRes.data,
-      similar: similarRes.data,
-      recommendations: recommendationsRes.data,
+      similar: {
+        results: filterValidItems(similarRes.data.results),
+      },
+      recommendations: {
+        results: filterValidItems(recommendationsRes.data.results),
+      },
     };
   } catch (error: unknown) {
     console.error('ERROR LOADING DETAILS:');

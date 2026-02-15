@@ -1,8 +1,9 @@
 import React from 'react';
 import { View, TouchableOpacity, Text, Animated, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+
 import { MediaType } from '../../types';
-import { COLORS, SPACING, FONT_SIZES } from '../../constants';
+import { COLORS, FONT_SIZES } from '../../constants';
 
 interface Props {
   selectedTab: MediaType;
