@@ -1,24 +1,27 @@
 // Home = The screen that lists movies and TV shows with search tool 
 // Detail = The screen that shows detailed information about a specific movie or TV show
+// Settings = The screen where users can configure app preferences
+// Shared = Hooks that are used across multiple screens
 
 // Home Screen Hooks
-export { useDebounce } from './useDebounce';
-export { useScrollAnimation } from './useScrollAnimation';
-export { useContentLoader } from './useContentLoader';
-export { useSearch } from './useSearch';
+export { useDebounce } from './Home/useDebounce';
+export { useScrollAnimation } from './Home/useScrollAnimation';
+export { useContentLoader } from './Home/useContentLoader';
+export { useSearch } from './Home/useSearch';
 
 // Detail Screen Hooks
-export { useContentDetails } from './useContentDetails';
-export { useSeasonData } from './useSeasonData';
-export * from './useSubtitlePreferences';
-export { useShareKey } from './useShareKey';
-export { useStreamFetcher } from './useStreamFetcher';
-
-// Player Screen Hoooks
-export { useContinueWatching } from './useContinueWatching';
+export { useContentDetails } from './Detail/useContentDetails';
+export { useSeasonData } from './Detail/useSeasonData';
+export * from './Detail/useSubtitlePreferences';
+export { useShareKey } from './Detail/useShareKey';
+export { useStreamFetcher } from './Detail/useStreamFetcher';
 
 // Settings Screen Hooks
-export * from './useFebboxTokens';
-export * from './useSubtitleLanguages';
-export * from './useFebboxServer';
-export * from './useSubtitleStyling';
+export * from './Settings/useFebboxTokens';
+export * from './Settings/useSubtitleLanguages';
+export * from './Settings/useFebboxServer';
+export { useFebBox4K } from './Settings/useFebbox4K';
+
+// Shared Hooks 
+export * from './Shared/useSubtitleStyling';
+export { useContinueWatching } from './Shared/useContinueWatching';

@@ -1,12 +1,31 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  TouchableOpacity, 
+  ScrollView, 
+  ActivityIndicator 
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING } from '../constants';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useFebBoxTokens, useSubtitleLanguages, useFebBoxServer, useSubtitleStyling } from '../hooks';
-import { TokenInput, LanguagePicker, LanguageItem, SettingsFebboxServerPicker, SubtitleCustomizerModal } from '../components';
+import { 
+  useFebBoxTokens, 
+  useSubtitleLanguages, 
+  useFebBoxServer, 
+  useSubtitleStyling, 
+  useFebBox4K 
+} from '../hooks';
+import { 
+  TokenInput, 
+  LanguagePicker, 
+  LanguageItem, 
+  SettingsFebboxServerPicker, 
+  SubtitleCustomizerModal 
+} from '../components';
 
 export const SettingsScreen: React.FC = () => {
   const navigation = useNavigation();
@@ -14,12 +33,13 @@ export const SettingsScreen: React.FC = () => {
   const { languages, isLoading: languagesLoading, addLanguage, removeLanguage } = useSubtitleLanguages();
   const { selectedServer, availableServers, isLoading: serverLoading, selectServer } = useFebBoxServer();
   const { styling, isLoading: stylingLoading, updateStyling, resetToDefault } = useSubtitleStyling();
+  const { is4KEnabled, isLoading: fourKLoading, toggle4K } = useFebBox4K();
   
   const [showLanguagePicker, setShowLanguagePicker] = useState(false);
   const [showServerPicker, setShowServerPicker] = useState(false);
   const [showStylingCustomizer, setShowStylingCustomizer] = useState(false);
 
-  const isLoading = tokensLoading || languagesLoading || serverLoading || stylingLoading;
+  const isLoading = tokensLoading || languagesLoading || serverLoading || stylingLoading || fourKLoading;
 
   if (isLoading) {
     return (
@@ -85,6 +105,26 @@ export const SettingsScreen: React.FC = () => {
                   </View>
                   <Ionicons name="chevron-forward" size={20} color={COLORS.textDark} />
                 </TouchableOpacity>
+
+                {/* 4K Quality Toggle */}
+                <View style={styles.divider} />
+
+                <View style={styles.toggleRow}>
+                  <View style={styles.toggleLeft}>
+                    <Ionicons name="film-outline" size={22} color="rgba(201, 255, 0, 0.9)" />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.addButtonText}>4K Quality</Text>
+                      <Text style={styles.serverSubtext}>Enable ultra high definition</Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity 
+                    style={[styles.toggle, is4KEnabled && styles.toggleActive]}
+                    onPress={toggle4K}
+                    activeOpacity={0.7}
+                  >
+                    <View style={[styles.toggleThumb, is4KEnabled && styles.toggleThumbActive]} />
+                  </TouchableOpacity>
+                </View>
               </View>
 
               <View style={styles.noteContainer}>
@@ -257,6 +297,41 @@ const styles = StyleSheet.create({
   divider: {
     height: 1,
     backgroundColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+  },
+  toggleLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  toggle: {
+    width: 51,
+    height: 31,
+    borderRadius: 15.5,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    padding: 2,
+    justifyContent: 'center',
+  },
+  toggleActive: {
+    backgroundColor: 'rgba(201, 255, 0, 0.9)',
+  },
+  toggleThumb: {
+    width: 27,
+    height: 27,
+    borderRadius: 13.5,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    transform: [{ translateX: 0 }],
+  },
+  toggleThumbActive: {
+    backgroundColor: '#000',
+    transform: [{ translateX: 20 }],
   },
   noteContainer: {
     marginTop: 12,

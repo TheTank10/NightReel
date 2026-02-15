@@ -5,6 +5,7 @@ import { getImdbId } from './tmdb';
 const TOKENS_STORAGE_KEY = '@febbox_tokens';
 const PRIMARY_TOKEN_INDEX_KEY = '@febbox_primary_token_index';
 const SERVER_STORAGE_KEY = '@febbox_server';
+const IS_4K_ENABLED_KEY = '@febbox_4k_enabled';
 
 export interface FebBoxTrafficData {
   traffic_usage: string;
@@ -340,6 +341,56 @@ const extractFidFromHtml = async (
 };
 
 /**
+ * Select best file based on 4K setting
+ */
+const selectBestFile = (files: FebBoxFile[], is4KEnabled: boolean): FebBoxFile => {
+  // Filter out 3D files first
+  const is3D = (file: FebBoxFile) => /\.3d\./i.test(file.file_name);
+  const non3DFiles = files.filter(f => !is3D(f));
+  
+  // If all files are 3D, fall back to original files (or throw error)
+  const filesToConsider = non3DFiles.length > 0 ? non3DFiles : files;
+  
+  if (is4KEnabled) {
+    // 4K ON: select largest file (original logic)
+    return filesToConsider.reduce((largest, current) => 
+      current.file_size_bytes > largest.file_size_bytes ? current : largest
+    );
+  }
+
+  // 4K OFF: prefer 1080p, avoid 4K if alternatives exist
+  const has1080p = (file: FebBoxFile) => /1080p/i.test(file.file_name);
+  const is4K = (file: FebBoxFile) => /2160p|4k|uhd/i.test(file.file_name);
+
+  // Try to find 1080p files first
+  const files1080p = filesToConsider.filter(has1080p);
+  if (files1080p.length > 0) {
+    console.log('[FebBox] 4K OFF: Selecting 1080p file');
+    return files1080p.reduce((largest, current) => 
+      current.file_size_bytes > largest.file_size_bytes ? current : largest
+    );
+  }
+
+  // No 1080p - check if there are 4K files and alternatives
+  const files4K = filesToConsider.filter(is4K);
+  const nonFiles4K = filesToConsider.filter(f => !is4K(f));
+
+  if (files4K.length > 0 && nonFiles4K.length > 0) {
+    // 4K exists but so do alternatives - pick largest non-4K
+    console.log('[FebBox] 4K OFF: Avoiding 4K, selecting alternative');
+    return nonFiles4K.reduce((largest, current) => 
+      current.file_size_bytes > largest.file_size_bytes ? current : largest
+    );
+  }
+
+  // No alternatives or no 4K detected - just return largest
+  console.log('[FebBox] 4K OFF: No alternatives, selecting largest available');
+  return filesToConsider.reduce((largest, current) => 
+    current.file_size_bytes > largest.file_size_bytes ? current : largest
+  );
+};
+
+/**
  * Get stream directly from FebBox share key
  */
 export const getFebBoxStreamDirect = async (
@@ -353,6 +404,11 @@ export const getFebBoxStreamDirect = async (
   }
 
   try {
+    // Load 4K setting
+    const is4KEnabledStr = await AsyncStorage.getItem(IS_4K_ENABLED_KEY);
+    const is4KEnabled = is4KEnabledStr !== null ? JSON.parse(is4KEnabledStr) : true;
+    console.log('[FebBox Direct] 4K Enabled:', is4KEnabled);
+    
     const stored = await AsyncStorage.getItem(TOKENS_STORAGE_KEY);
     if (!stored) {
       return { success: false, error: 'No FebBox tokens configured' };
@@ -495,9 +551,7 @@ export const getFebBoxStreamDirect = async (
         return { success: false, error: `Episode ${episode} not found` };
       }
 
-      targetFile = episodeFiles.reduce((largest, current) => 
-        current.file_size_bytes > largest.file_size_bytes ? current : largest
-      );
+      targetFile = selectBestFile(episodeFiles, is4KEnabled);
 
       console.log('[FebBox Direct] Selected episode:', targetFile.file_name);
 
@@ -509,9 +563,7 @@ export const getFebBoxStreamDirect = async (
         return { success: false, error: 'No video files found' };
       }
 
-      targetFile = videoFiles.reduce((largest, current) => 
-        current.file_size_bytes > largest.file_size_bytes ? current : largest
-      );
+      targetFile = selectBestFile(videoFiles, is4KEnabled);
 
       console.log('[FebBox Direct] Selected movie:', targetFile.file_name);
     }

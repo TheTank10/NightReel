@@ -16,6 +16,7 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
  * - HomeScreen: Main browsing interface
  * - DetailScreen: Movie/show details modal
  * - PlayerScreen: Video player
+ * - SettingsScreen: User preferences
  */
 export default function App() {
   return (
